@@ -5,7 +5,7 @@
 [[redirects]]
   from = "/"
   to = "/macro-logger/"
-  status = 302 # Temporary, change to 301 once confirmed working
+  status = 301 # Permanent redirect
   force = true
 
 # 2. Rewrite specific known static files from public dir
