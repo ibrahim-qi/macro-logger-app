@@ -1,17 +1,46 @@
 # This file should be in the 'macro-logger-app' directory, 
 # which is set as the 'Base directory' in Netlify build settings.
 
-# Rule 1: Rewrite asset paths
-# When the HTML (built with base: '/macro-logger/') requests an asset like '/macro-logger/assets/file.js',
-# serve it from Netlify's root deployment of that asset (e.g., '/assets/file.js').
+# 1. Redirect root to the app's base path
+[[redirects]]
+  from = "/"
+  to = "/macro-logger/"
+  status = 302 # Temporary, change to 301 once confirmed working
+  force = true
+
+# 2. Rewrite specific known static files from public dir
+# These are requested as /macro-logger/file.ext but exist as /file.ext in the deployment root.
+[[redirects]]
+  from = "/macro-logger/favicon.ico"
+  to = "/favicon.ico"
+  status = 200
+[[redirects]]
+  from = "/macro-logger/apple-touch-icon.png"
+  to = "/apple-touch-icon.png"
+  status = 200
+[[redirects]]
+  from = "/macro-logger/pwa-192x192.png"
+  to = "/pwa-192x192.png"
+  status = 200
+[[redirects]]
+  from = "/macro-logger/pwa-512x512.png"
+  to = "/pwa-512x512.png"
+  status = 200
+[[redirects]]
+  from = "/macro-logger/manifest.webmanifest" # Default name for VitePWA
+  to = "/manifest.webmanifest"
+  status = 200
+
+# 3. Rewrite Vite's bundled assets (typically in /assets/ subfolder)
+# Request: /macro-logger/assets/file.js -> Serve: /assets/file.js
 [[redirects]]
   from = "/macro-logger/assets/*"
   to = "/assets/:splat"
   status = 200
 
-# Rule 2: SPA Fallback for client-side routing
-# For any path under '/macro-logger/' that isn't an asset (e.g., /macro-logger/today),
-# serve the main index.html. React Router will then handle the route.
+# 4. SPA Fallback for any other /macro-logger/ path
+# This comes last. If a request like /macro-logger/today reaches here,
+# it means it wasn't one of the specific files or assets above.
 [[redirects]]
   from = "/macro-logger/*"
   to = "/index.html"
