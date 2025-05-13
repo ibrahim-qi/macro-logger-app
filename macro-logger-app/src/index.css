@@ -1,0 +1,7 @@
+@import "tailwindcss";
+
+/* 
+  Removed default :root, body, a, h1, button styles 
+  as Tailwind handles base styles and we apply specific styles via utility classes.
+  Keeping this file minimal ensures Tailwind has full control.
+*/
