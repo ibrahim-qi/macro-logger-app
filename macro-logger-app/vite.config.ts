@@ -2,9 +2,9 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
-// https://vite.dev/config/
+// https://vitejs.dev/config/
 export default defineConfig({
-  base: '/macro-logger/',
+  base: '/macro-logger',
   plugins: [
     react(), 
     VitePWA({
@@ -17,8 +17,8 @@ export default defineConfig({
         theme_color: '#ffffff',
         background_color: '#ffffff',
         display: 'standalone',
-        scope: '/macro-logger/',
-        start_url: '/macro-logger/',
+        scope: '/macro-logger',
+        start_url: '/macro-logger',
         icons: [
           {
             src: 'pwa-192x192.png',

@@ -1,15 +1,15 @@
 # This file should be in the 'macro-logger-app' directory, 
 # which is set as the 'Base directory' in Netlify build settings.
 
-# 1. Redirect root to the app's base path
+# 1. Redirect root of macrologger.netlify.app to its /macro-logger path (no slash)
 [[redirects]]
   from = "/"
-  to = "/macro-logger/"
-  status = 301 # Permanent redirect
+  to = "/macro-logger"
+  status = 301
   force = true
 
 # 2. Rewrite specific known static files from public dir
-# These are requested as /macro-logger/file.ext but exist as /file.ext in the deployment root.
+# Vite will still generate links like /macro-logger/favicon.ico due to base: '/macro-logger'
 [[redirects]]
   from = "/macro-logger/favicon.ico"
   to = "/favicon.ico"
@@ -27,11 +27,9 @@
   to = "/pwa-512x512.png"
   status = 200
 [[redirects]]
-  from = "/macro-logger/manifest.webmanifest" # Default name for VitePWA
+  from = "/macro-logger/manifest.webmanifest"
   to = "/manifest.webmanifest"
   status = 200
-
-# NEW/ADJUSTED: For PWA files typically at the root of 'dist'
 [[redirects]]
   from = "/macro-logger/registerSW.js"
   to = "/registerSW.js"
@@ -40,22 +38,20 @@
   from = "/macro-logger/sw.js"
   to = "/sw.js"
   status = 200
-# If vite-plugin-pwa uses workbox, it might generate workbox-*.js files too
 [[redirects]]
   from = "/macro-logger/workbox-*:name.:ext"
   to = "/workbox-:name.:ext"
   status = 200
 
-# 3. Rewrite Vite's bundled assets (typically in /assets/ subfolder)
-# Request: /macro-logger/assets/file.js -> Serve: /assets/file.js
+# 3. Rewrite Vite's bundled assets (Vite adds the slash for /assets/)
 [[redirects]]
   from = "/macro-logger/assets/*"
   to = "/assets/:splat"
   status = 200
 
-# 4. SPA Fallback for any other /macro-logger/ path
-# This comes last. If a request like /macro-logger/today reaches here,
-# it means it wasn't one of the specific files or assets above.
+# 4. SPA Fallback for /macro-logger and /macro-logger/*
+# This rule should handle requests like /macro-logger (proxied from portfolio)
+# and /macro-logger/today. React Router basename is now "/macro-logger".
 [[redirects]]
   from = "/macro-logger/*"
   to = "/index.html"

@@ -44,7 +44,7 @@ function App() {
   }
 
   return (
-    <Router basename={import.meta.env.BASE_URL}>
+    <Router basename="/macro-logger">
       {!session ? (
         // Auth UI centered
         <div className="flex items-center justify-center min-h-screen px-4 bg-gray-100">
