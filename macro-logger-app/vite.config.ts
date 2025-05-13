@@ -17,8 +17,8 @@ export default defineConfig({
         theme_color: '#ffffff',
         background_color: '#ffffff',
         display: 'standalone',
-        scope: '/',
-        start_url: '/',
+        scope: '/macro-logger/',
+        start_url: '/macro-logger/',
         icons: [
           {
             src: 'pwa-192x192.png',

@@ -1,0 +1,18 @@
+# This file should be in the 'macro-logger-app' directory, 
+# which is set as the 'Base directory' in Netlify build settings.
+
+# Rule 1: Rewrite asset paths
+# When the HTML (built with base: '/macro-logger/') requests an asset like '/macro-logger/assets/file.js',
+# serve it from Netlify's root deployment of that asset (e.g., '/assets/file.js').
+[[redirects]]
+  from = "/macro-logger/assets/*"
+  to = "/assets/:splat"
+  status = 200
+
+# Rule 2: SPA Fallback for client-side routing
+# For any path under '/macro-logger/' that isn't an asset (e.g., /macro-logger/today),
+# serve the main index.html. React Router will then handle the route.
+[[redirects]]
+  from = "/macro-logger/*"
+  to = "/index.html"
+  status = 200 
