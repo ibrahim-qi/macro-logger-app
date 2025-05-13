@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../supabaseClient';
-import type { Session, RealtimeChannel } from '@supabase/supabase-js';
+import type { Session } from '@supabase/supabase-js';
 import Modal from './Modal'; // Import the Modal component
 import EditEntryForm from './EditEntryForm'; // Import the EditEntryForm component
 // We'll create EditEntryForm later
@@ -53,7 +53,6 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
   // State for Edit Modal
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [entryToEdit, setEntryToEdit] = useState<FoodEntry | null>(null);
-  const [isUpdatingEntry, setIsUpdatingEntry] = useState(false); // For loading state during update
 
   // State for Delete Confirmation Modal
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
@@ -199,7 +198,6 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
   const handleUpdateEntry = async (updatedData: FoodEntryUpdateData & { id: number }) => {
     if (!entryToEdit) return; // Should not happen if modal is open with an entry
 
-    setIsUpdatingEntry(true);
     setError(null);
 
     try {
@@ -246,8 +244,6 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
       // The error will be displayed in EditEntryForm, but we could also set a global error here if desired
       // For now, let EditEntryForm handle its own error display during submission
       throw err; // Re-throw to allow EditEntryForm to catch it and manage its loading/error state
-    } finally {
-      setIsUpdatingEntry(false);
     }
   };
   // --- End Edit Modal Handlers ---
@@ -267,11 +263,6 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
       return newDate;
     });
   };
-
-  const isDateToday = isToday(displayedDate);
-  const displayDateString = displayedDate.toLocaleDateString(undefined, { 
-    weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' 
-  });
 
   const navButtonClasses = "px-3 py-1.5 sm:px-4 sm:py-2 text-sm font-medium rounded-lg transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed";
   const todayButtonClasses = `${navButtonClasses} bg-blue-100 text-blue-700 hover:bg-blue-200`;

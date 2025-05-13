@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient'; // For potential future use, like fetching something specific if needed
 
 // Interface for the props
 interface FoodEntryData {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'; // Removed unused useRef
+import { useState, useEffect } from 'react'; // Removed unused useRef and default React import
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './supabaseClient';
 import { Auth } from '@supabase/auth-ui-react';
