@@ -31,6 +31,21 @@
   to = "/manifest.webmanifest"
   status = 200
 
+# NEW/ADJUSTED: For PWA files typically at the root of 'dist'
+[[redirects]]
+  from = "/macro-logger/registerSW.js"
+  to = "/registerSW.js"
+  status = 200
+[[redirects]]
+  from = "/macro-logger/sw.js"
+  to = "/sw.js"
+  status = 200
+# If vite-plugin-pwa uses workbox, it might generate workbox-*.js files too
+[[redirects]]
+  from = "/macro-logger/workbox-*:name.:ext"
+  to = "/workbox-:name.:ext"
+  status = 200
+
 # 3. Rewrite Vite's bundled assets (typically in /assets/ subfolder)
 # Request: /macro-logger/assets/file.js -> Serve: /assets/file.js
 [[redirects]]
