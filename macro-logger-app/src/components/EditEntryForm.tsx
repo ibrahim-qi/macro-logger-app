@@ -121,8 +121,8 @@ const EditEntryForm: React.FC<EditEntryFormProps> = ({ entry, onSave, onCancel }
             value={quantity}
             onChange={(e) => setQuantity(e.target.value)}
             className={inputClass}
-            min="0.1"
-            step="0.1"
+            min="0.01"
+            step="0.01"
             required
           />
         </div>
