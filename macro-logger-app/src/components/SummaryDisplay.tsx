@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../supabaseClient';
 import type { Session } from '@supabase/supabase-js';
+import TabNavigation from './TabNavigation';
+import WeeklyTab from './WeeklyTab';
+import MonthlyTab from './MonthlyTab';
 
 // Update SummaryData type based on new SQL function returns
 interface SummaryData {
@@ -24,124 +27,15 @@ const formatDate = (date: Date): string => {
   return date.toISOString().split('T')[0];
 };
 
-// --- SummaryCard Component (Extracted and Refined) ---
-interface SummaryCardProps {
-  titleBase: string;
-  data: SummaryData | null;
-  loading: boolean;
-  periodType: 'week' | 'month';
-  isCurrentPeriod: () => boolean;
-  changePeriod: (offset: number) => void;
-}
-
-const SummaryCard: React.FC<SummaryCardProps> = ({ titleBase, data, loading, periodType, isCurrentPeriod, changePeriod }) => {
-    const disableNext = isCurrentPeriod();
-
-    let displayTitle = titleBase;
-    if(periodType === 'week') {
-        const weekStart = data?.week_start_display ? new Date(data.week_start_display + 'T00:00:00') : null;
-        const weekEnd = data?.week_end_display ? new Date(data.week_end_display + 'T00:00:00') : null;
-        if(weekStart && weekEnd) {
-            displayTitle = `${weekStart.toLocaleDateString(undefined, {month: 'short', day: 'numeric'})} - ${weekEnd.toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}`;
-        } else {
-            displayTitle = 'This Week';
-        }
-    }
-    
-    if(periodType === 'month') {
-        displayTitle = data?.month_display || 'This Month';
-    }
-
-    return (
-        <div className="mb-8">
-            <div className="bg-white rounded-xl shadow-sm border border-stone-100 overflow-hidden">
-                {/* Clean Header */}
-                <div className="flex items-center justify-between p-4 border-b border-stone-100 bg-stone-50">
-                    <button 
-                        onClick={() => changePeriod(-1)} 
-                        className="p-2 hover:bg-stone-100 rounded-full transition-colors"
-                    >
-                        <svg className="w-5 h-5 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                        </svg>
-                    </button>
-                    
-                    <div className="text-center">
-                        <h3 className="text-base font-medium text-stone-900">{displayTitle}</h3>
-                        <p className="text-xs text-stone-500 mt-1">{periodType === 'week' ? 'Weekly' : 'Monthly'} Summary</p>
-                    </div>
-                    
-                    <button 
-                        onClick={() => changePeriod(1)} 
-                        disabled={disableNext}
-                        className="p-2 hover:bg-stone-100 rounded-full transition-colors disabled:opacity-30"
-                    >
-                        <svg className="w-5 h-5 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                    </button>
-                </div>
-
-                {/* Content */}
-                <div className="p-6">
-                    {loading ? (
-                        <div className="text-center py-8">
-                            <p className="text-sm text-stone-500">Loading...</p>
-                        </div>
-                    ) : !data || data.entry_count === 0 ? (
-                        <div className="text-center py-8">
-                            <div className="text-stone-400 mb-4">
-                                <svg className="w-8 h-8 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                                </svg>
-                            </div>
-                            <p className="text-sm text-stone-500">No data for this period</p>
-                        </div>
-                    ) : (
-                        <div>
-                            {/* Main Stats */}
-                            <div className="grid grid-cols-2 gap-8 mb-6">
-                                <div className="text-center">
-                                    <div className="text-3xl font-light text-slate-700 mb-1">
-                                        {data.total_calories.toLocaleString()}
-                                    </div>
-                                    <div className="text-xs text-stone-500 uppercase tracking-wide">Total Calories</div>
-                                </div>
-                                <div className="text-center">
-                                    <div className="text-lg font-light text-stone-700 mb-1">
-                                        {data.total_protein.toLocaleString()}g
-                                    </div>
-                                    <div className="text-xs text-stone-500 uppercase tracking-wide">Total Protein</div>
-                                </div>
-                            </div>
-
-                            {/* Daily Average */}
-                            {data.days_logged > 0 && (
-                                <div className="pt-4 border-t border-stone-100">
-                                    <div className="text-center">
-                                        <div className="text-lg font-light text-stone-800">
-                                            {(data.total_calories / data.days_logged).toFixed(0)} cal/day
-                                        </div>
-                                        <div className="text-xs text-stone-500 mt-1">
-                                            Average across {data.days_logged} {data.days_logged === 1 ? 'day' : 'days'}
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-}
-
 const SummaryDisplay: React.FC<SummaryDisplayProps> = ({ session }) => {
   const [weeklySummary, setWeeklySummary] = useState<SummaryData | null>(null);
   const [monthlySummary, setMonthlySummary] = useState<SummaryData | null>(null);
   const [loadingWeekly, setLoadingWeekly] = useState(true);
   const [loadingMonthly, setLoadingMonthly] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Tab Navigation State
+  const [activeTab, setActiveTab] = useState('weekly');
 
   const [currentWeekDate, setCurrentWeekDate] = useState(new Date());
   const [currentMonthDate, setCurrentMonthDate] = useState(new Date());
@@ -226,36 +120,56 @@ const SummaryDisplay: React.FC<SummaryDisplayProps> = ({ session }) => {
 
   return (
     <div>
-      <div className="mb-8">
+      {/* Header */}
+      <div className="mb-6">
         <h1 className="text-xl font-medium text-slate-700 text-center">Summary</h1>
         <p className="text-sm text-stone-500 text-center mt-1">Your nutrition overview</p>
       </div>
       
+      {/* Error Display */}
       {error && (
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <p className="text-red-600 text-sm">{error}</p>
         </div>
       )}
-      
-      <SummaryCard 
-        titleBase="Weekly Summary" 
-        data={weeklySummary} 
-        loading={loadingWeekly} 
-        periodType='week'
-        isCurrentPeriod={isCurrentWeek}
-        changePeriod={(offset) => changeWeek(offset)}
+
+      {/* Tab Navigation */}
+      <TabNavigation
+        tabs={[
+          { id: 'weekly', label: 'Weekly' },
+          { id: 'monthly', label: 'Monthly' }
+        ]}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        className="mb-6"
       />
-      
-      <SummaryCard 
-        titleBase="Monthly Summary" 
-        data={monthlySummary} 
-        loading={loadingMonthly} 
-        periodType='month'
-        isCurrentPeriod={isCurrentMonth}
-        changePeriod={(offset) => changeMonth(offset)}
-      />
+
+      {/* Tab Content */}
+      <div className="relative">
+        {activeTab === 'weekly' ? (
+          <WeeklyTab
+            data={weeklySummary}
+            previousData={null} // Disabled until proper previous data fetching is implemented
+            loading={loadingWeekly}
+            isActive={true}
+            currentWeekDate={currentWeekDate}
+            isCurrentWeek={isCurrentWeek}
+            changeWeek={changeWeek}
+          />
+        ) : (
+          <MonthlyTab
+            data={monthlySummary}
+            previousData={null} // Disabled until proper previous data fetching is implemented
+            loading={loadingMonthly}
+            isActive={true}
+            currentMonthDate={currentMonthDate}
+            isCurrentMonth={isCurrentMonth}
+            changeMonth={changeMonth}
+          />
+        )}
+      </div>
     </div>
   );
 };
 
-export default SummaryDisplay; 
+export default SummaryDisplay;

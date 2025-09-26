@@ -3,7 +3,10 @@ import { supabase } from '../supabaseClient';
 import type { Session } from '@supabase/supabase-js';
 import Modal from './Modal'; // Import the Modal component
 import EditEntryForm from './EditEntryForm'; // Import the EditEntryForm component
-// We'll create EditEntryForm later
+import GoalsSettingsForm from './GoalsSettingsForm'; // Import the goals settings form
+import TabNavigation from './TabNavigation'; // Import the tab navigation
+import EntriesTab from './EntriesTab'; // Import the entries tab
+import GoalsTab from './GoalsTab'; // Import the goals tab
 
 // Define the structure of a food entry based on our table
 interface FoodEntry {
@@ -58,6 +61,21 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [itemIdToDelete, setItemIdToDelete] = useState<number | null>(null);
 
+  // State for Goals Settings Modal
+  const [isGoalsModalOpen, setIsGoalsModalOpen] = useState(false);
+
+  // Tab Navigation State
+  const [activeTab, setActiveTab] = useState('entries');
+
+  // User Goals State (for GoalsTab)
+  const [userGoals, setUserGoals] = useState<{
+    daily_calories_goal: number;
+    daily_protein_goal: number;
+    daily_carbs_goal: number;
+    daily_fats_goal: number;
+  } | null>(null);
+  const [goalsLoading, setGoalsLoading] = useState(true);
+
   // Calculate daily totals
   const dailyTotals = React.useMemo(() => {
     return entries.reduce(
@@ -98,6 +116,48 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
       setEntries([]);
     } finally {
       setLoading(false);
+    }
+  }, [session.user.id]);
+
+  // Function to fetch user goals
+  const fetchUserGoals = useCallback(async () => {
+    try {
+      setGoalsLoading(true);
+
+      const { data, error } = await supabase
+        .from('user_goals')
+        .select('daily_calories_goal, daily_protein_goal, daily_carbs_goal, daily_fats_goal')
+        .eq('user_id', session.user.id)
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          // No goals set yet - create default goals
+          const { data: insertData, error: insertError } = await supabase
+            .from('user_goals')
+            .insert({
+              user_id: session.user.id,
+              daily_calories_goal: 2000,
+              daily_protein_goal: 150,
+              daily_carbs_goal: 250,
+              daily_fats_goal: 65
+            })
+            .select('daily_calories_goal, daily_protein_goal, daily_carbs_goal, daily_fats_goal')
+            .single();
+
+          if (insertError) throw insertError;
+          setUserGoals(insertData);
+        } else {
+          throw error;
+        }
+      } else {
+        setUserGoals(data);
+      }
+    } catch (err: any) {
+      console.error('Error fetching user goals:', err);
+      setUserGoals(null);
+    } finally {
+      setGoalsLoading(false);
     }
   }, [session.user.id]); // Dependency on session.user.id
 
@@ -145,8 +205,9 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
   useEffect(() => {
     if (session) {
       fetchEntries(displayedDate);
+      fetchUserGoals();
     }
-  }, [session, displayedDate, fetchEntries]); // Add displayedDate and fetchEntries
+  }, [session, displayedDate, fetchEntries, fetchUserGoals]); // Add fetchUserGoals
 
   // Effect for Realtime subscription
   useEffect(() => {
@@ -264,6 +325,19 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
     });
   };
 
+  // Goals Modal Handlers
+  const handleGoalsClick = () => {
+    setIsGoalsModalOpen(true);
+  };
+
+  const handleGoalsClose = () => {
+    setIsGoalsModalOpen(false);
+  };
+
+  const handleGoalsUpdated = () => {
+    fetchUserGoals(); // Refresh user goals when they're updated
+  };
+
 
   if (loading) {
     return <p className="text-center text-stone-500 py-4">Loading entries...</p>;
@@ -276,7 +350,7 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
   return (
     <div>
       {/* Minimal Date Header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-6">
         <button
           onClick={goToPreviousDay}
           className="p-2 hover:bg-stone-100 rounded-full transition-colors"
@@ -317,78 +391,38 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
         </button>
       </div>
 
-      {/* Daily Totals Card */}
-      {entries.length > 0 && (
-        <div className="mb-6">
-          <div className="bg-white rounded-xl shadow-sm border border-stone-100 p-6">
-            <div className="grid grid-cols-2 gap-4 text-center">
-              <div>
-                <div className="text-2xl font-light text-slate-700">{dailyTotals.calories.toFixed(0)}</div>
-                <div className="text-xs text-stone-500 uppercase tracking-wide">Calories</div>
-              </div>
-              <div>
-                <div className="text-lg font-light text-stone-700">{dailyTotals.protein.toFixed(1)}g</div>
-                <div className="text-xs text-stone-500 uppercase tracking-wide">Protein</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Tab Navigation */}
+      <TabNavigation
+        tabs={[
+          { id: 'entries', label: 'Entries' },
+          { id: 'goals', label: 'Goals' }
+        ]}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        className="mb-6"
+      />
 
-      {/* Empty State */}
-      {entries.length === 0 && (
-        <div className="text-center py-12">
-          <div className="text-stone-400 mb-4">
-            <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-            </svg>
-          </div>
-          <p className="text-sm text-stone-500">No entries for this day</p>
-        </div>
-      )}
-
-      {/* Food Entries Card */}
-      {entries.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-stone-100 overflow-hidden">
-          <div className="divide-y divide-stone-50">
-            {entries.map((entry) => (
-              <div key={entry.id} className="flex items-center justify-between p-4">
-                <div className="flex-1 mr-4">
-                  <p className="font-medium text-stone-900 capitalize">{entry.food_name}</p>
-                  <div className="flex items-center space-x-4 mt-1 text-sm text-stone-500">
-                    <span>{new Date(entry.created_at).toLocaleTimeString([], { hour: 'numeric', minute:'2-digit' })}</span>
-                    <span>×{entry.quantity}</span>
-                    <span>{(entry.calories * entry.quantity).toFixed(0)} cal</span>
-                    {(entry.protein ?? 0) > 0 && <span>{((entry.protein ?? 0) * entry.quantity).toFixed(1)}g protein</span>}
-                  </div>
-                </div>
-                
-                <div className="flex space-x-2">
-                  <button 
-                    onClick={() => handleOpenEditModal(entry)}
-                    className="p-2 text-stone-400 hover:text-slate-700 transition-colors"
-                    aria-label={`Edit ${entry.food_name}`}
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                  </button>
-                  
-                  <button 
-                    onClick={() => requestDeleteEntry(entry.id)}
-                    className="p-2 text-stone-400 hover:text-red-500 transition-colors"
-                    aria-label={`Delete ${entry.food_name}`}
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Tab Content */}
+      <div className="relative">
+        {activeTab === 'entries' ? (
+          <EntriesTab
+            entries={entries}
+            dailyTotals={dailyTotals}
+            onEditEntry={handleOpenEditModal}
+            onDeleteEntry={requestDeleteEntry}
+            isActive={true}
+          />
+        ) : (
+          <GoalsTab
+            dailyTotals={dailyTotals}
+            userGoals={userGoals}
+            loading={goalsLoading}
+            selectedDate={displayedDate}
+            onGoalsClick={handleGoalsClick}
+            isActive={true}
+          />
+        )}
+      </div>
 
       {/* Edit Modal */}
       {isEditModalOpen && entryToEdit && (
@@ -423,6 +457,14 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
           </div>
         </Modal>
       )}
+
+      {/* Goals Settings Modal */}
+      <GoalsSettingsForm
+        session={session}
+        isOpen={isGoalsModalOpen}
+        onClose={handleGoalsClose}
+        onGoalsUpdated={handleGoalsUpdated}
+      />
     </div>
   );
 };
