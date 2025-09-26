@@ -264,155 +264,165 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
     });
   };
 
-  const navButtonClasses = "px-3 py-1.5 sm:px-4 sm:py-2 text-sm font-medium rounded-lg transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed";
-  const todayButtonClasses = `${navButtonClasses} bg-blue-100 text-blue-700 hover:bg-blue-200`;
-  const arrowButtonClasses = `${navButtonClasses} bg-gray-200 text-gray-700 hover:bg-gray-300`;
 
   if (loading) {
-    return <p className="text-center text-gray-500 py-4">Loading entries...</p>;
+    return <p className="text-center text-stone-500 py-4">Loading entries...</p>;
   }
 
   if (error) {
-    return <p className="text-center text-gray-500 py-4">{error}</p>;
+    return <p className="text-center text-stone-500 py-4">{error}</p>;
   }
 
   return (
-    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-center gap-3 sm:gap-4">
-        <h2 className="text-xl sm:text-2xl font-semibold text-gray-800 order-2 sm:order-1">
-          Entries for: <span className="text-blue-600">{displayedDate.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
-        </h2>
-        <div className="flex items-center gap-2 order-1 sm:order-2">
-          <button onClick={goToPreviousDay} className={arrowButtonClasses} aria-label="Previous day">
-            <span className="material-icons-outlined">chevron_left</span>
-          </button>
+    <div>
+      {/* Minimal Date Header */}
+      <div className="flex items-center justify-between mb-8">
+        <button
+          onClick={goToPreviousDay}
+          className="p-2 hover:bg-stone-100 rounded-full transition-colors"
+          aria-label="Previous day"
+        >
+          <svg className="w-5 h-5 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+        
+        <div className="text-center">
+          <h2 className="text-lg font-medium text-stone-900">
+            {isToday(displayedDate) ? 'Today' : displayedDate.toLocaleDateString('en-US', { 
+              weekday: 'short', 
+              month: 'short', 
+              day: 'numeric' 
+            })}
+          </h2>
           {!isToday(displayedDate) && (
-            <button 
-              onClick={() => setDisplayedDate(new Date())} 
-              className={todayButtonClasses}
-              aria-label="Go to today"
+            <button
+              onClick={() => setDisplayedDate(new Date())}
+              className="text-xs text-stone-500 hover:text-stone-700 mt-1"
             >
-              Today
+              Jump to today
             </button>
           )}
-          <button onClick={goToNextDay} disabled={isToday(displayedDate)} className={arrowButtonClasses} aria-label="Next day">
-            <span className="material-icons-outlined">chevron_right</span>
-          </button>
         </div>
+        
+        <button
+          onClick={goToNextDay}
+          disabled={isToday(displayedDate)}
+          className="p-2 hover:bg-stone-100 rounded-full transition-colors disabled:opacity-30"
+          aria-label="Next day"
+        >
+          <svg className="w-5 h-5 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
       </div>
 
-      {/* Daily Totals Display */}
-      {!loading && entries.length > 0 && (
-        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg shadow-sm">
-          <h3 className="text-md sm:text-lg font-semibold text-blue-700 mb-2 text-center">Daily Totals</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2 text-sm">
-            <div><strong>Calories:</strong> <span className="text-gray-800 float-right">{dailyTotals.calories.toFixed(0)} kcal</span></div>
-            <div><strong>Protein:</strong> <span className="text-gray-800 float-right">{dailyTotals.protein.toFixed(1)} g</span></div>
-            <div><strong>Carbs:</strong> <span className="text-gray-800 float-right">{dailyTotals.carbs.toFixed(1)} g</span></div>
-            <div><strong>Fats:</strong> <span className="text-gray-800 float-right">{dailyTotals.fats.toFixed(1)} g</span></div>
+      {/* Daily Totals Card */}
+      {entries.length > 0 && (
+        <div className="mb-6">
+          <div className="bg-white rounded-xl shadow-sm border border-stone-100 p-6">
+            <div className="grid grid-cols-2 gap-4 text-center">
+              <div>
+                <div className="text-2xl font-light text-slate-700">{dailyTotals.calories.toFixed(0)}</div>
+                <div className="text-xs text-stone-500 uppercase tracking-wide">Calories</div>
+              </div>
+              <div>
+                <div className="text-lg font-light text-stone-700">{dailyTotals.protein.toFixed(1)}g</div>
+                <div className="text-xs text-stone-500 uppercase tracking-wide">Protein</div>
+              </div>
+            </div>
           </div>
         </div>
       )}
 
-      {entries.length === 0 ? (
-        <div className="text-center text-gray-400 py-10 px-4">
-          <span className="material-icons-outlined text-5xl mb-3 opacity-70">summarize</span>
-          <p className="text-lg font-medium text-gray-600 mb-1">No entries for this day.</p>
-          {isToday(displayedDate) ? (
-            <p className="text-sm text-gray-500">Log some food on the 'Log' tab to see it here!</p>
-          ) : (
-            <p className="text-sm text-gray-500">Try another date or add entries for this day.</p>
-          )}
+      {/* Empty State */}
+      {entries.length === 0 && (
+        <div className="text-center py-12">
+          <div className="text-stone-400 mb-4">
+            <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+          </div>
+          <p className="text-sm text-stone-500">No entries for this day</p>
         </div>
-      ) : (
-        // Increased spacing between list items
-        <ul className="space-y-3 sm:space-y-4">
-          {entries.map((entry) => (
-            <li 
-              key={entry.id} 
-              // Adjusted padding, border, hover effect, shadow
-              className="flex items-center justify-between gap-3 sm:gap-4 p-3 sm:p-4 border border-gray-200/70 rounded-lg bg-white shadow-sm hover:shadow-md hover:border-gray-300 transition-all duration-150"
-            >
-              {/* Left Side: Name and Time - Adjusted text styles */}
-              <div className="flex-grow mr-2 overflow-hidden">
-                <p className="text-base font-medium text-gray-900 truncate capitalize">{entry.food_name}</p>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  {new Date(entry.created_at).toLocaleTimeString([], { hour: 'numeric', minute:'2-digit' })}
-                </p>
+      )}
+
+      {/* Food Entries Card */}
+      {entries.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-stone-100 overflow-hidden">
+          <div className="divide-y divide-stone-50">
+            {entries.map((entry) => (
+              <div key={entry.id} className="flex items-center justify-between p-4">
+                <div className="flex-1 mr-4">
+                  <p className="font-medium text-stone-900 capitalize">{entry.food_name}</p>
+                  <div className="flex items-center space-x-4 mt-1 text-sm text-stone-500">
+                    <span>{new Date(entry.created_at).toLocaleTimeString([], { hour: 'numeric', minute:'2-digit' })}</span>
+                    <span>×{entry.quantity}</span>
+                    <span>{(entry.calories * entry.quantity).toFixed(0)} cal</span>
+                    {(entry.protein ?? 0) > 0 && <span>{((entry.protein ?? 0) * entry.quantity).toFixed(1)}g protein</span>}
+                  </div>
+                </div>
+                
+                <div className="flex space-x-2">
+                  <button 
+                    onClick={() => handleOpenEditModal(entry)}
+                    className="p-2 text-stone-400 hover:text-slate-700 transition-colors"
+                    aria-label={`Edit ${entry.food_name}`}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </button>
+                  
+                  <button 
+                    onClick={() => requestDeleteEntry(entry.id)}
+                    className="p-2 text-stone-400 hover:text-red-500 transition-colors"
+                    aria-label={`Delete ${entry.food_name}`}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
               </div>
-
-              {/* Right Side: Macros, Qty, Actions */}
-              <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
-                 {/* Macros & Qty - Adjusted text styles and spacing */}
-                 <div className="text-right">
-                    <p className="text-sm font-semibold text-blue-600">{(entry.calories * entry.quantity).toFixed(0)} kcal</p>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {/* Nicer formatting for macros */}
-                      Qty: <span className="font-medium text-gray-600">{entry.quantity}</span> | P: <span className="font-medium text-gray-600">{((entry.protein ?? 0) * entry.quantity).toFixed(1)}g</span>
-                    </p>
-                 </div>
-                 
-                 {/* Action Buttons Container */}
-                 <div className="flex items-center border-l border-gray-200 pl-2 sm:pl-3 space-x-1">
-                    {/* Edit Button - Slightly larger tap area, adjusted hover */}
-                    <button 
-                        onClick={() => handleOpenEditModal(entry)}
-                        className="p-1.5 rounded-md text-blue-600 hover:text-blue-800 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-1 transition-colors"
-                        aria-label={`Edit entry ${entry.food_name}`}
-                    >
-                        <span className="material-icons-outlined text-xl leading-none">edit</span>
-                    </button>
-
-                    {/* Delete Button - Slightly larger tap area, adjusted hover */}
-                    <button 
-                        onClick={() => requestDeleteEntry(entry.id)}
-                        className="p-1.5 rounded-md text-red-500 hover:text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-1 transition-colors"
-                        aria-label={`Delete entry ${entry.food_name}`}
-                    >
-                        <span className="material-icons-outlined text-xl leading-none">delete</span>
-                    </button>
-                 </div>
-               </div>
-            </li>
-          ))}
-        </ul>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Edit Modal */}
       {isEditModalOpen && entryToEdit && (
-        <Modal isOpen={true} onClose={handleCloseEditModal} title="Edit Food Entry">
-            <EditEntryForm 
-                 entry={entryToEdit} 
-                 onSave={handleUpdateEntry} 
-                 onCancel={handleCloseEditModal} 
-            />
+        <Modal isOpen={true} onClose={handleCloseEditModal} title="Edit Entry">
+          <EditEntryForm 
+            entry={entryToEdit} 
+            onSave={handleUpdateEntry} 
+            onCancel={handleCloseEditModal} 
+          />
         </Modal>
-       )}
+      )}
 
       {/* Delete Confirmation Modal */}
       {isDeleteConfirmOpen && (
-        <Modal isOpen={true} onClose={cancelDelete} title="Confirm Deletion">
-          <div className="space-y-4">
-            <p className="text-gray-700">Are you sure you want to delete this food entry?</p>
-            <p className="text-sm text-gray-500">This action cannot be undone.</p>
-            <div className="flex justify-end space-x-3 pt-2">
-                <button
-                  onClick={cancelDelete}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmDeleteEntry}
-                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                >
-                  Delete
-                </button>
+        <Modal isOpen={true} onClose={cancelDelete} title="Delete Entry">
+          <div className="space-y-6">
+            <p className="text-stone-600">Are you sure you want to delete this entry?</p>
+            <div className="flex space-x-3">
+              <button
+                onClick={cancelDelete}
+                className="flex-1 py-3 px-4 border border-stone-200 text-stone-700 rounded-xl hover:bg-stone-50 transition-colors focus:outline-none focus:ring-2 focus:ring-stone-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteEntry}
+                className="flex-1 py-3 px-4 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-400"
+              >
+                Delete
+              </button>
             </div>
           </div>
         </Modal>
       )}
-
     </div>
   );
 };

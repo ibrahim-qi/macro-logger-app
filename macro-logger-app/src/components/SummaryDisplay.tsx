@@ -35,83 +35,102 @@ interface SummaryCardProps {
 }
 
 const SummaryCard: React.FC<SummaryCardProps> = ({ titleBase, data, loading, periodType, isCurrentPeriod, changePeriod }) => {
-    const cardBaseClasses = "p-4 sm:p-5 border border-gray-200/80 rounded-xl shadow-md bg-white";
-    const titleClasses = "text-base sm:text-lg font-semibold text-blue-700 mb-1 text-center mx-2 flex-grow";
-    const navButtonClasses = "p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-40 disabled:hover:bg-transparent focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-1";
-
-    let displayTitle = titleBase;
     const disableNext = isCurrentPeriod();
 
+    let displayTitle = titleBase;
     if(periodType === 'week') {
         const weekStart = data?.week_start_display ? new Date(data.week_start_display + 'T00:00:00') : null;
         const weekEnd = data?.week_end_display ? new Date(data.week_end_display + 'T00:00:00') : null;
         if(weekStart && weekEnd) {
-            displayTitle = `Week: ${weekStart.toLocaleDateString(undefined, {month: 'short', day: 'numeric'})} - ${weekEnd.toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}`;
-        } else if (!loading && data) { // Show default week title only if data is loaded but dates are missing
-            displayTitle = 'Weekly Summary';
-        } else if (!loading && !data) {
-            displayTitle = 'Weekly: (No Data)';
+            displayTitle = `${weekStart.toLocaleDateString(undefined, {month: 'short', day: 'numeric'})} - ${weekEnd.toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}`;
+        } else {
+            displayTitle = 'This Week';
         }
     }
     
     if(periodType === 'month') {
-        displayTitle = data?.month_display || (loading ? titleBase : 'Monthly: (No Data)');
+        displayTitle = data?.month_display || 'This Month';
     }
 
     return (
-        <div className={`${cardBaseClasses} flex flex-col min-h-[300px]`}> 
-             <div className="flex justify-between items-center mb-3 sm:mb-4">
-                 <button onClick={() => changePeriod(-1)} className={navButtonClasses}>
-                     <span className="material-icons-outlined text-xl">chevron_left</span>
-                 </button>
-                 <h3 className={titleClasses}>{displayTitle}</h3>
-                 <button 
-                    onClick={() => changePeriod(1)} 
-                    disabled={disableNext} 
-                    className={navButtonClasses}
-                 >
-                     <span className="material-icons-outlined text-xl">chevron_right</span>
-                 </button>
-            </div>
-
-            <div className="flex-grow flex flex-col justify-center"> 
-                {loading ? (
-                    <p className="text-center text-gray-500 py-10">Loading...</p>
-                ) : !data || data.entry_count === 0 ? (
-                    <div className="text-center text-gray-400 py-10 px-4">
-                        <span className="material-icons-outlined text-4xl mb-2 opacity-70">upcoming</span>
-                        <p className="text-sm font-medium text-gray-500">No entries recorded</p>
-                        <p className="text-xs text-gray-400">Log some food to see your summary here.</p>
+        <div className="mb-8">
+            <div className="bg-white rounded-xl shadow-sm border border-stone-100 overflow-hidden">
+                {/* Clean Header */}
+                <div className="flex items-center justify-between p-4 border-b border-stone-100 bg-stone-25">
+                    <button 
+                        onClick={() => changePeriod(-1)} 
+                        className="p-2 hover:bg-stone-100 rounded-full transition-colors"
+                    >
+                        <svg className="w-5 h-5 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                        </svg>
+                    </button>
+                    
+                    <div className="text-center">
+                        <h3 className="text-base font-medium text-stone-900">{displayTitle}</h3>
+                        <p className="text-xs text-stone-500 mt-1">{periodType === 'week' ? 'Weekly' : 'Monthly'} Summary</p>
                     </div>
-                ) : (
-                    <>
-                        <div className="mb-3 sm:mb-4 pb-3 sm:pb-4 border-b border-gray-200/80">
-                            <h4 className="text-xs sm:text-sm font-medium text-gray-500 uppercase tracking-wider mb-1.5 sm:mb-2">Totals</h4>
-                            <div className="grid grid-cols-2 gap-x-3 sm:gap-x-4 gap-y-1 text-sm">
-                                <span>Calories:</span> <span className="font-semibold text-gray-800 text-right">{data.total_calories.toLocaleString()}</span>
-                                <span>Protein:</span> <span className="font-semibold text-gray-800 text-right">{data.total_protein.toLocaleString()} g</span>
-                                <span>Carbs:</span> <span className="font-semibold text-gray-800 text-right">{data.total_carbs.toLocaleString()} g</span>
-                                <span>Fats:</span> <span className="font-semibold text-gray-800 text-right">{data.total_fats.toLocaleString()} g</span>
+                    
+                    <button 
+                        onClick={() => changePeriod(1)} 
+                        disabled={disableNext}
+                        className="p-2 hover:bg-stone-100 rounded-full transition-colors disabled:opacity-30"
+                    >
+                        <svg className="w-5 h-5 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                    </button>
+                </div>
+
+                {/* Content */}
+                <div className="p-6">
+                    {loading ? (
+                        <div className="text-center py-8">
+                            <p className="text-sm text-stone-500">Loading...</p>
+                        </div>
+                    ) : !data || data.entry_count === 0 ? (
+                        <div className="text-center py-8">
+                            <div className="text-stone-400 mb-4">
+                                <svg className="w-8 h-8 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                </svg>
                             </div>
+                            <p className="text-sm text-stone-500">No data for this period</p>
                         </div>
+                    ) : (
                         <div>
-                            <h4 className="text-xs sm:text-sm font-medium text-gray-500 uppercase tracking-wider mb-1.5 sm:mb-2">Daily Averages</h4>
-                            <div className="grid grid-cols-2 gap-x-3 sm:gap-x-4 gap-y-1 text-sm">
-                                {data.days_logged > 0 ? (
-                                    <>
-                                        <span>Calories:</span> <span className="font-semibold text-gray-800 text-right">{(data.total_calories / data.days_logged).toFixed(0)}</span>
-                                        <span>Protein:</span> <span className="font-semibold text-gray-800 text-right">{(data.total_protein / data.days_logged).toFixed(1)} g</span>
-                                        <span>Carbs:</span> <span className="font-semibold text-gray-800 text-right">{(data.total_carbs / data.days_logged).toFixed(1)} g</span>
-                                        <span>Fats:</span> <span className="font-semibold text-gray-800 text-right">{(data.total_fats / data.days_logged).toFixed(1)} g</span>
-                                    </>
-                                ) : (
-                                    <span className="col-span-2 text-center text-gray-400 text-xs">No entries to average.</span>
-                                )}
-                             </div>
-                             <p className="text-xs text-gray-400 mt-2 sm:mt-3 text-center">Based on {data.days_logged} {data.days_logged === 1 ? 'day' : 'days'} with entries.</p>
+                            {/* Main Stats */}
+                            <div className="grid grid-cols-2 gap-8 mb-6">
+                                <div className="text-center">
+                                    <div className="text-3xl font-light text-slate-700 mb-1">
+                                        {data.total_calories.toLocaleString()}
+                                    </div>
+                                    <div className="text-xs text-stone-500 uppercase tracking-wide">Total Calories</div>
+                                </div>
+                                <div className="text-center">
+                                    <div className="text-lg font-light text-stone-700 mb-1">
+                                        {data.total_protein.toLocaleString()}g
+                                    </div>
+                                    <div className="text-xs text-stone-500 uppercase tracking-wide">Total Protein</div>
+                                </div>
+                            </div>
+
+                            {/* Daily Average */}
+                            {data.days_logged > 0 && (
+                                <div className="pt-4 border-t border-stone-100">
+                                    <div className="text-center">
+                                        <div className="text-lg font-light text-stone-800">
+                                            {(data.total_calories / data.days_logged).toFixed(0)} cal/day
+                                        </div>
+                                        <div className="text-xs text-stone-500 mt-1">
+                                            Average across {data.days_logged} {data.days_logged === 1 ? 'day' : 'days'}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
-                    </>
-                )}
+                    )}
+                </div>
             </div>
         </div>
     );
@@ -206,31 +225,35 @@ const SummaryDisplay: React.FC<SummaryDisplayProps> = ({ session }) => {
   }, [currentMonthDate]);
 
   return (
-    <div className="space-y-6 p-4 sm:p-6">
-      <h2 className="text-xl sm:text-2xl font-semibold text-gray-800 text-center">Summaries</h2>
-       {error && (
-          <p className="text-center text-sm p-3 rounded-md border border-red-300 bg-red-100 text-red-800">
-            Error: {error}
-          </p>
-        )}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-        <SummaryCard 
-          titleBase="Weekly Summary" 
-          data={weeklySummary} 
-          loading={loadingWeekly} 
-          periodType='week'
-          isCurrentPeriod={isCurrentWeek}
-          changePeriod={(offset) => changeWeek(offset)}
-        />
-        <SummaryCard 
-          titleBase="Monthly Summary" 
-          data={monthlySummary} 
-          loading={loadingMonthly} 
-          periodType='month'
-          isCurrentPeriod={isCurrentMonth}
-          changePeriod={(offset) => changeMonth(offset)}
-        />
+    <div>
+      <div className="mb-8">
+        <h1 className="text-xl font-medium text-slate-700 text-center">Summary</h1>
+        <p className="text-sm text-stone-500 text-center mt-1">Your nutrition overview</p>
       </div>
+      
+      {error && (
+        <div className="text-center mb-8">
+          <p className="text-red-600 text-sm">{error}</p>
+        </div>
+      )}
+      
+      <SummaryCard 
+        titleBase="Weekly Summary" 
+        data={weeklySummary} 
+        loading={loadingWeekly} 
+        periodType='week'
+        isCurrentPeriod={isCurrentWeek}
+        changePeriod={(offset) => changeWeek(offset)}
+      />
+      
+      <SummaryCard 
+        titleBase="Monthly Summary" 
+        data={monthlySummary} 
+        loading={loadingMonthly} 
+        periodType='month'
+        isCurrentPeriod={isCurrentMonth}
+        changePeriod={(offset) => changeMonth(offset)}
+      />
     </div>
   );
 };

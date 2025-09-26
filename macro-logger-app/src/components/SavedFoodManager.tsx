@@ -218,172 +218,280 @@ const SavedFoodManager: React.FC<SavedFoodManagerProps> = ({ session, onFoodSele
   );
 
   return (
-    <div className="p-4 sm:p-6 border border-gray-200/80 rounded-xl shadow-md bg-white">
-        <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg sm:text-xl font-semibold text-gray-800">Saved Foods</h2>
+    <div>
+        <div className="flex justify-between items-center mb-6">
+            <div>
+                <h2 className="text-xl font-medium text-slate-700">Saved Foods</h2>
+                <p className="text-sm text-stone-500 mt-1">Quick add from your favorites</p>
+            </div>
             <button 
                 onClick={() => {
-                    if (showForm && editingFoodId) resetForm(); // If editing, cancel resets form
-                    else if (showForm) setShowForm(false); // If adding, just hide
-                    else { // If not showing, prepare for adding
-                        resetForm(); // Clear any previous edit state
+                    if (showForm && editingFoodId) resetForm();
+                    else if (showForm) setShowForm(false);
+                    else { 
+                        resetForm();
                         setShowForm(true);
                     }
                 }}
-                className={`flex items-center justify-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-medium text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors duration-150 ${
-                    showForm ? 'bg-red-500 hover:bg-red-600 focus:ring-red-400' : 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500'
+                className={`flex items-center space-x-2 px-3 py-2 rounded-full transition-colors focus:outline-none focus:ring-2 ${
+                    showForm ? 'bg-stone-100 hover:bg-stone-200 focus:ring-stone-300 text-stone-700' : 'bg-stone-100 hover:bg-stone-200 focus:ring-stone-300 text-stone-700'
                 }`}
             >
-                <span className="material-icons-outlined text-base sm:text-lg">
-                    {showForm ? 'cancel' : 'add_circle_outline'}
-                </span>
-                <span>
-                    {showForm ? (editingFoodId ? 'Cancel Edit' : 'Cancel Add') : 'Add New Saved Food'}
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    {showForm ? (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    ) : (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    )}
+                </svg>
+                <span className="text-sm font-medium">
+                    {showForm ? 'Cancel' : 'Add'}
                 </span>
             </button>
         </div>
 
         {showForm && (
-            <form onSubmit={handleFormSubmit} className="mb-6 p-4 border border-gray-200 rounded-lg bg-gray-50/50 space-y-4">
-                <h3 className="text-base font-medium text-gray-700">
-                    {editingFoodId ? 'Edit Saved Food' : 'Save a New Food'}
-                </h3>
-                <div>
-                    <label htmlFor="saved_food_name" className="block text-sm font-medium text-gray-700 mb-1">Food Name</label>
-                    <input type="text" name="food_name" id="saved_food_name" value={formData.food_name} onChange={handleInputChange} required className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm" />
+            <div className="mb-6">
+                <div className="bg-white rounded-xl shadow-sm border border-stone-100 p-6">
+                    <form onSubmit={handleFormSubmit} className="space-y-6">
+                        <div>
+                            <h3 className="text-base font-medium text-stone-900 mb-4">
+                                {editingFoodId ? 'Edit Food' : 'Save New Food'}
+                            </h3>
+                        </div>
+                        
+                        <div>
+                            <label htmlFor="saved_food_name" className="block text-sm font-medium text-stone-900 mb-2">Food Name</label>
+                            <input 
+                                type="text" 
+                                name="food_name" 
+                                id="saved_food_name" 
+                                value={formData.food_name} 
+                                onChange={handleInputChange} 
+                                required 
+                                placeholder="e.g., Grilled Chicken Breast"
+                                className="w-full px-0 py-3 text-base bg-transparent border-0 border-b border-stone-200 focus:outline-none focus:border-slate-700 focus:ring-0 placeholder-stone-400 transition-colors"
+                            />
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-8">
+                            <div>
+                                <label htmlFor="saved_calories" className="block text-sm font-medium text-stone-900 mb-2">Calories</label>
+                                <input 
+                                    type="number" 
+                                    name="calories" 
+                                    id="saved_calories" 
+                                    value={formData.calories} 
+                                    onChange={handleInputChange} 
+                                    required 
+                                    min="0" 
+                                    inputMode="numeric"
+                                    placeholder="200"
+                                    className="w-full px-0 py-3 text-base bg-transparent border-0 border-b border-stone-200 focus:outline-none focus:border-slate-700 focus:ring-0 placeholder-stone-400 transition-colors"
+                                />
+                            </div>
+                        </div>
+                        
+                        <div className="pt-4 mt-4 border-t border-stone-100">
+                            <div className="mb-4">
+                                <h4 className="text-sm font-medium text-stone-900">Macros (optional)</h4>
+                                <p className="text-xs text-stone-500 mt-1">Per serving</p>
+                            </div>
+                            
+                            <div className="grid grid-cols-3 gap-6">
+                                <div>
+                                    <label htmlFor="saved_protein" className="block text-xs text-stone-600 mb-2">Protein (g)</label>
+                                    <input 
+                                        type="number" 
+                                        name="protein" 
+                                        id="saved_protein" 
+                                        value={formData.protein} 
+                                        onChange={handleInputChange} 
+                                        min="0" 
+                                        step="0.1" 
+                                        inputMode="decimal"
+                                        placeholder="25"
+                                        className="w-full px-0 py-2 text-sm bg-transparent border-0 border-b border-stone-200 focus:outline-none focus:border-slate-700 focus:ring-0 placeholder-stone-400 transition-colors"
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor="saved_carbs" className="block text-xs text-stone-600 mb-2">Carbs (g)</label>
+                                    <input 
+                                        type="number" 
+                                        name="carbs" 
+                                        id="saved_carbs" 
+                                        value={formData.carbs} 
+                                        onChange={handleInputChange} 
+                                        min="0" 
+                                        step="0.1" 
+                                        inputMode="decimal"
+                                        placeholder="30"
+                                        className="w-full px-0 py-2 text-sm bg-transparent border-0 border-b border-stone-200 focus:outline-none focus:border-slate-700 focus:ring-0 placeholder-stone-400 transition-colors"
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor="saved_fats" className="block text-xs text-stone-600 mb-2">Fats (g)</label>
+                                    <input 
+                                        type="number" 
+                                        name="fats" 
+                                        id="saved_fats" 
+                                        value={formData.fats} 
+                                        onChange={handleInputChange} 
+                                        min="0" 
+                                        step="0.1" 
+                                        inputMode="decimal"
+                                        placeholder="15"
+                                        className="w-full px-0 py-2 text-sm bg-transparent border-0 border-b border-stone-200 focus:outline-none focus:border-slate-700 focus:ring-0 placeholder-stone-400 transition-colors"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div className="pt-6">
+                            <button 
+                                type="submit" 
+                                disabled={saving} 
+                                className="w-full py-4 bg-slate-700 hover:bg-slate-800 disabled:bg-stone-300 text-white font-medium text-base rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-700 focus:ring-offset-2 transition-colors shadow-sm"
+                            >
+                                {saving ? 'Saving...' : (editingFoodId ? 'Update Food' : 'Save Food')}
+                            </button>
+                        </div>
+                        
+                        {formMessage && (
+                          <div className={`p-3 rounded-xl border text-sm font-medium text-center ${formMessage.includes('success') 
+                            ? 'text-green-800 bg-green-50 border-green-200' 
+                            : 'text-red-800 bg-red-50 border-red-200'}`}
+                          >
+                            {formMessage}
+                          </div>
+                        )}
+                    </form>
                 </div>
-                <div>
-                    <label htmlFor="saved_calories" className="block text-sm font-medium text-gray-700 mb-1">Calories (per serving)</label>
-                    <input type="number" name="calories" id="saved_calories" value={formData.calories} onChange={handleInputChange} required min="0" className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm" />
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div>
-                        <label htmlFor="saved_protein" className="block text-sm font-medium text-gray-700 mb-1">Protein (g)</label>
-                        <input type="number" name="protein" id="saved_protein" value={formData.protein} onChange={handleInputChange} min="0" step="0.1" className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm" />
-                    </div>
-                    <div>
-                        <label htmlFor="saved_carbs" className="block text-sm font-medium text-gray-700 mb-1">Carbs (g)</label>
-                        <input type="number" name="carbs" id="saved_carbs" value={formData.carbs} onChange={handleInputChange} min="0" step="0.1" className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm" />
-                    </div>
-                    <div>
-                        <label htmlFor="saved_fats" className="block text-sm font-medium text-gray-700 mb-1">Fats (g)</label>
-                        <input type="number" name="fats" id="saved_fats" value={formData.fats} onChange={handleInputChange} min="0" step="0.1" className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm" />
-                    </div>
-                </div>
-                <button type="submit" disabled={saving} className="w-full py-2 px-4 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 transition-colors">
-                    {saving ? (editingFoodId ? 'Updating...' : 'Saving...') : (editingFoodId ? 'Update Food' : 'Save Food')}
-                </button>
-                {formMessage && (
-                  <p 
-                    className={`text-sm text-center mt-2 p-2 rounded-md border ${formMessage.includes('success') 
-                      ? 'text-green-800 bg-green-100 border-green-300' 
-                      : 'text-red-800 bg-red-100 border-red-300'}`}
-                  >
-                    {formMessage}
-                  </p>
-                )}
-            </form>
-        )}
-
-        {/* Search Input - Added below the form, visible when list is shown */}
-        {!showForm && savedFoods.length > 0 && (
-            <div className="mb-4">
-                <input
-                    type="text"
-                    placeholder="Search saved foods..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                />
             </div>
         )}
 
-        {loading && savedFoods.length === 0 && <p className="text-center text-gray-500 py-6">Loading saved foods...</p>}
+        {/* Search & Food List Container */}
+        {!showForm && savedFoods.length > 0 && (
+            <div className="bg-white rounded-xl shadow-sm border border-stone-100 overflow-hidden">
+                {/* Search Input */}
+                <div className="p-4 border-b border-stone-100">
+                    <input
+                        type="text"
+                        placeholder="Search foods..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full px-0 py-3 text-base bg-transparent border-0 border-b border-stone-200 focus:outline-none focus:border-slate-700 focus:ring-0 placeholder-stone-400 transition-colors"
+                    />
+                </div>
+                
+                {/* Food List */}
+                {filteredFoods.length > 0 && (
+                    <div className="divide-y divide-stone-50 max-h-80 overflow-y-auto">
+                        {filteredFoods.map(food => (
+                            <div 
+                              key={food.id} 
+                              className="flex items-center justify-between p-4"
+                            >
+                                <div className="flex-1 mr-4">
+                                    <p className="font-medium text-stone-900 capitalize">{food.food_name}</p>
+                                    <div className="flex items-center space-x-4 mt-1 text-sm text-stone-500">
+                                        <span>{food.calories} cal</span>
+                                        {food.protein > 0 && <span>{food.protein}g protein</span>}
+                                        {food.carbs > 0 && <span>{food.carbs}g carbs</span>}
+                                        {food.fats > 0 && <span>{food.fats}g fats</span>}
+                                    </div>
+                                </div>
+                                
+                                <div className="flex space-x-2">
+                                  <button 
+                                      onClick={() => onFoodSelect(food)}
+                                      disabled={saving}
+                                      className="px-3 py-2 text-sm font-medium text-white bg-slate-600 hover:bg-slate-700 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-slate-400 disabled:opacity-50"
+                                      aria-label={`Add ${food.food_name} to journal`}
+                                  >
+                                      Use
+                                  </button>
+                                  
+                                  <button
+                                    onClick={() => handleEditFood(food)}
+                                    disabled={saving}
+                                    className="p-2 text-stone-400 hover:text-slate-700 transition-colors disabled:opacity-50"
+                                    aria-label={`Edit ${food.food_name}`}
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                    </svg>
+                                  </button>
+                                  
+                                  <button 
+                                      onClick={() => requestDeleteSavedFood(food.id, food.food_name)}
+                                      disabled={saving}
+                                      className="p-2 text-stone-400 hover:text-red-500 transition-colors disabled:opacity-50"
+                                      aria-label={`Delete ${food.food_name}`}
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                  </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        )}
+
+        {/* Loading State */}
+        {loading && savedFoods.length === 0 && (
+            <div className="text-center py-8">
+                <p className="text-sm text-stone-500">Loading...</p>
+            </div>
+        )}
+        
+        {/* Empty State */}
         {!loading && savedFoods.length === 0 && !showForm && (
-          <div className="text-center text-gray-500 py-6 px-4 border border-dashed border-gray-300 rounded-lg">
-             <span className="material-icons-outlined text-4xl text-gray-400 mb-2">fastfood</span>
-             <p className="font-medium mb-1">No Saved Foods Yet</p>
-             <p className="text-sm">Click 'Add New Saved Food' above to create your first reusable food item.</p>
+          <div className="text-center py-12">
+            <div className="text-stone-400 mb-4">
+                <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                </svg>
+            </div>
+            <p className="text-sm text-stone-500 mb-2">No saved foods yet</p>
+            <p className="text-xs text-stone-400">Add foods you eat regularly for quick logging</p>
           </div>
         )}
         
-        {/* Display filtered list or message if no results from filter */}
-        {!loading && filteredFoods.length > 0 && (
-            <div className="max-h-80 overflow-y-auto space-y-3 pr-1">
-                {filteredFoods.map(food => (
-                    <div 
-                      key={food.id} 
-                      className="flex items-center justify-between gap-3 p-3 border border-gray-200/70 rounded-lg bg-white shadow-sm hover:shadow-md hover:border-gray-300 transition-all duration-150"
-                    >
-                        <div className="overflow-hidden mr-2 flex-grow">
-                            <p className="font-medium text-gray-900 truncate capitalize">{food.food_name}</p>
-                            <p className="text-xs text-gray-500 mt-0.5">
-                                <span className="font-semibold text-blue-600">{food.calories}</span>kcal | 
-                                P:<span className="font-medium text-gray-600">{food.protein}g</span> | 
-                                C:<span className="font-medium text-gray-600">{food.carbs}g</span> | 
-                                F:<span className="font-medium text-gray-600">{food.fats}g</span>
-                            </p>
-                        </div>
-                        
-                        <div className="flex items-center shrink-0 space-x-1 sm:space-x-1.5">
-                          <button 
-                              onClick={() => onFoodSelect(food)}
-                              disabled={saving}
-                              className="px-2 py-1 text-xs font-medium text-blue-700 bg-blue-100 rounded-md hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 disabled:opacity-60 shrink-0 transition-colors"
-                              aria-label={`Add ${food.food_name} to journal`}
-                          >
-                              Add
-                          </button>
-                          <button
-                            onClick={() => handleEditFood(food)}
-                            disabled={saving}
-                            className="p-1.5 rounded-md text-blue-600 hover:text-blue-800 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-1 disabled:opacity-50 shrink-0 transition-colors"
-                            aria-label={`Edit saved food ${food.food_name}`}
-                          >
-                            <span className="material-icons-outlined text-lg leading-none">edit</span>
-                          </button>
-                          <button 
-                              onClick={() => requestDeleteSavedFood(food.id, food.food_name)}
-                              disabled={saving}
-                              className="p-1.5 rounded-md text-red-500 hover:text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-1 disabled:opacity-50 shrink-0 transition-colors"
-                              aria-label={`Delete saved food ${food.food_name}`}
-                          >
-                              <span className="material-icons-outlined text-lg leading-none">delete</span>
-                          </button>
-                        </div>
-                    </div>
-                ))}
-            </div>
-        )}
-        {/* Message when search yields no results but there are saved foods */}
+        {/* No Search Results */}
         {!loading && savedFoods.length > 0 && filteredFoods.length === 0 && !showForm && (
-            <div className="text-center text-gray-500 py-6 px-4">
-                <span className="material-icons-outlined text-4xl text-gray-400 mb-2">search_off</span>
-                <p className="font-medium">No Saved Foods Match Your Search</p>
-                <p className="text-sm">Try a different search term or clear the search.</p>
+            <div className="text-center py-8">
+                <div className="text-stone-400 mb-4">
+                    <svg className="w-8 h-8 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                </div>
+                <p className="text-sm text-stone-500">No foods match your search</p>
             </div>
         )}
 
       {/* Delete Confirmation Modal */}
       {isDeleteConfirmOpen && itemToDelete && (
-        <Modal isOpen={true} onClose={cancelDelete} title="Confirm Deletion">
-          <div className="space-y-4">
-            <p className="text-gray-700">
-              Are you sure you want to delete the saved food <span className="font-semibold">"{itemToDelete.name}"</span>?
+        <Modal isOpen={true} onClose={cancelDelete} title="Delete Food">
+          <div className="space-y-6">
+            <p className="text-stone-600">
+              Are you sure you want to delete <span className="font-semibold">"{itemToDelete.name}"</span>?
             </p>
-            <p className="text-sm text-gray-500">This action cannot be undone.</p>
-            <div className="flex justify-end space-x-3 pt-2">
+            <div className="flex space-x-3">
                 <button
                   onClick={cancelDelete}
-                  disabled={saving} // Disable if already processing another save/delete
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50"
+                  disabled={saving}
+                  className="flex-1 py-3 px-4 border border-stone-200 text-stone-700 rounded-xl hover:bg-stone-50 transition-colors focus:outline-none focus:ring-2 focus:ring-stone-300 disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={confirmDeleteSavedFood}
-                  disabled={saving} // Disable if already processing another save/delete
-                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
+                  disabled={saving}
+                  className="flex-1 py-3 px-4 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-400 disabled:opacity-50"
                 >
                   {saving ? 'Deleting...' : 'Delete'}
                 </button>

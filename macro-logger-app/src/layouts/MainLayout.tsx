@@ -8,53 +8,66 @@ interface MainLayoutProps {
 }
 
 const MainLayout: React.FC<MainLayoutProps> = ({ handleLogout }) => {
-  // Define NavLink active/inactive classes
   const navLinkClasses = ({ isActive }: { isActive: boolean }): string => 
-    // Updated classes for better visual distinction
-    `flex flex-col items-center justify-center px-2 py-1.5 w-1/3 text-xs font-medium transition-colors duration-150 rounded-md ${
+    `flex flex-col items-center justify-center flex-1 py-4 text-sm font-medium transition-colors ${
       isActive 
-        ? 'bg-blue-800 text-white' // Active state: Med-dark blue background, white text
-        : 'text-blue-300 hover:text-white hover:bg-blue-700' // Inactive state: Lighter blue text, hover to white text & med blue bg
+        ? 'text-slate-700' 
+        : 'text-stone-500 hover:text-slate-700'
     }`;
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50 text-gray-800"> {/* Slightly lighter page background */}
-      {/* Header - Updated to Navy Blue Theme */}
-      <header className="sticky top-0 z-20 bg-blue-900 text-white shadow-md px-4 sm:px-6 lg:px-8 py-3">
-        <div className="max-w-5xl mx-auto flex justify-between items-center">
-          <h1 className="text-xl sm:text-2xl font-bold">Macro Logger</h1> {/* text-indigo-700 removed */}
-          {/* Logout button with icon */}
+    <div className="flex flex-col min-h-screen bg-stone-50">
+      {/* Enhanced Header */}
+      <header className="border-b border-slate-100 px-6 py-4 bg-stone-25 shadow-sm">
+        <div className="max-w-sm mx-auto flex justify-between items-center">
+          <h1 className="text-xl font-semibold text-slate-700 tracking-tight">Macro Logger</h1>
           <button 
             onClick={handleLogout}
-            className="p-2 rounded-full hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-blue-900 transition-colors duration-150"
+            className="text-stone-400 hover:text-slate-700 transition-colors p-1"
             aria-label="Logout"
           >
-            <span className="material-icons-outlined">logout</span>
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
           </button>
         </div>
       </header>
 
-      {/* Main Content Area - Use max-w-5xl consistent with header, adjust padding */}
-      <main className="flex-grow max-w-5xl w-full mx-auto px-3 py-4 sm:px-5 sm:py-6 lg:px-8 mb-20"> {/* Increased bottom margin for nav */}
-        <Outlet />
+      {/* Clean Main Content */}
+      <main className="flex-grow px-6 py-8 pb-24">
+        <div className="max-w-sm mx-auto">
+          <Outlet />
+        </div>
       </main>
 
-      {/* Bottom Navigation - Updated for Navy Blue Theme */}
-      <nav className="fixed bottom-0 left-0 right-0 z-10 bg-blue-900 border-t border-blue-800 shadow-lg-top">
-        {/* Use max-w-5xl, increased height slightly, added some internal padding */}
-        <div className="max-w-5xl mx-auto flex justify-around items-center h-[68px] px-2 sm:px-4">
-          {/* Using navLinkClasses defined above */}
+      {/* Enhanced Bottom Navigation */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 shadow-lg">
+        <div className="max-w-sm mx-auto flex">
           <NavLink to="/" className={navLinkClasses} end>
-            <span className="material-icons-outlined mb-0.5">edit_note</span>
-            <span>Log</span>
+            <div className="w-6 h-6 mb-1">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+            </div>
+            <span>Add</span>
           </NavLink>
+          
           <NavLink to="/today" className={navLinkClasses}>
-            <span className="material-icons-outlined mb-0.5">event_note</span>
+            <div className="w-6 h-6 mb-1">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+            </div>
             <span>Today</span>
           </NavLink>
+          
           <NavLink to="/summary" className={navLinkClasses}>
-            <span className="material-icons-outlined mb-0.5">leaderboard</span>
-            <span>Summary</span>
+            <div className="w-6 h-6 mb-1">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+            </div>
+            <span>Stats</span>
           </NavLink>
         </div>
       </nav>
