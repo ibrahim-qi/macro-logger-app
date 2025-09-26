@@ -56,7 +56,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ titleBase, data, loading, per
         <div className="mb-8">
             <div className="bg-white rounded-xl shadow-sm border border-stone-100 overflow-hidden">
                 {/* Clean Header */}
-                <div className="flex items-center justify-between p-4 border-b border-stone-100 bg-stone-25">
+                <div className="flex items-center justify-between p-4 border-b border-stone-100 bg-stone-50">
                     <button 
                         onClick={() => changePeriod(-1)} 
                         className="p-2 hover:bg-stone-100 rounded-full transition-colors"

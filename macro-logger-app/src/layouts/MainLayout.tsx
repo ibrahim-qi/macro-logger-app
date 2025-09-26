@@ -18,7 +18,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ handleLogout }) => {
   return (
     <div className="flex flex-col min-h-screen bg-stone-50">
       {/* Enhanced Header */}
-      <header className="border-b border-slate-100 px-6 py-4 bg-stone-25 shadow-sm">
+      <header className="border-b border-slate-100 px-6 py-4 bg-stone-50 shadow-sm">
         <div className="max-w-sm mx-auto flex justify-between items-center">
           <h1 className="text-xl font-semibold text-slate-700 tracking-tight">Macro Logger</h1>
           <button 
