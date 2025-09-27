@@ -96,13 +96,7 @@ const EntriesTab: React.FC<EntriesTabProps> = ({
               {entries.map((entry, index) => (
                 <div 
                   key={entry.id} 
-                  className={`
-                    flex items-center justify-between p-4 transition-all duration-200
-                    ${isActive ? 'animate-fade-in-up' : ''}
-                  `}
-                  style={{
-                    animationDelay: isActive ? `${index * 40}ms` : '0ms'
-                  }}
+                  className="flex items-center justify-between p-4 transition-all duration-200"
                 >
                   <div className="flex-1 mr-4">
                     <p className="font-medium text-stone-900 capitalize leading-tight">
@@ -149,24 +143,6 @@ const EntriesTab: React.FC<EntriesTabProps> = ({
         </div>
       )}
 
-      {/* Add custom fade-in animation */}
-      <style jsx>{`
-        @keyframes fade-in-up {
-          from {
-            opacity: 0;
-            transform: translateY(10px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        
-        .animate-fade-in-up {
-          animation: fade-in-up 0.4s ease-out forwards;
-          opacity: 0;
-        }
-      `}</style>
     </div>
   );
 };

@@ -51,7 +51,6 @@ interface WeeklyTabProps {
   previousData: SummaryData | null;
   loading: boolean;
   isActive: boolean;
-  currentWeekDate: Date;
   isCurrentWeek: () => boolean;
   changeWeek: (offset: number) => void;
 }
@@ -61,7 +60,6 @@ const WeeklyTab: React.FC<WeeklyTabProps> = ({
   previousData,
   loading,
   isActive,
-  currentWeekDate,
   isCurrentWeek,
   changeWeek
 }) => {

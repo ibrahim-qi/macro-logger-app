@@ -120,7 +120,7 @@ const GoalsTab: React.FC<GoalsTabProps> = ({
       <div className="bg-white rounded-xl shadow-sm border border-stone-100 p-8">
         <div className="grid grid-cols-2 gap-8">
           {/* Calories */}
-          <div className={`flex justify-center ${isActive ? 'animate-scale-in' : ''}`} style={{animationDelay: '100ms'}}>
+          <div className="flex justify-center">
             <CircularProgress
               percentage={getPercentage(dailyTotals.calories, userGoals.daily_calories_goal)}
               value={formatValue(dailyTotals.calories, 'calories')}
@@ -131,7 +131,7 @@ const GoalsTab: React.FC<GoalsTabProps> = ({
           </div>
 
           {/* Protein */}
-          <div className={`flex justify-center ${isActive ? 'animate-scale-in' : ''}`} style={{animationDelay: '200ms'}}>
+          <div className="flex justify-center">
             <CircularProgress
               percentage={getPercentage(dailyTotals.protein, userGoals.daily_protein_goal)}
               value={formatValue(dailyTotals.protein, 'grams')}
@@ -142,7 +142,7 @@ const GoalsTab: React.FC<GoalsTabProps> = ({
           </div>
 
           {/* Carbs */}
-          <div className={`flex justify-center ${isActive ? 'animate-scale-in' : ''}`} style={{animationDelay: '300ms'}}>
+          <div className="flex justify-center">
             <CircularProgress
               percentage={getPercentage(dailyTotals.carbs, userGoals.daily_carbs_goal)}
               value={formatValue(dailyTotals.carbs, 'grams')}
@@ -153,7 +153,7 @@ const GoalsTab: React.FC<GoalsTabProps> = ({
           </div>
 
           {/* Fats */}
-          <div className={`flex justify-center ${isActive ? 'animate-scale-in' : ''}`} style={{animationDelay: '400ms'}}>
+          <div className="flex justify-center">
             <CircularProgress
               percentage={getPercentage(dailyTotals.fats, userGoals.daily_fats_goal)}
               value={formatValue(dailyTotals.fats, 'grams')}
@@ -166,8 +166,7 @@ const GoalsTab: React.FC<GoalsTabProps> = ({
       </div>
 
       {/* Goals Summary Card */}
-      <div className={`bg-white rounded-xl shadow-sm border border-stone-100 p-6 ${isActive ? 'animate-fade-in-up' : ''}`} 
-           style={{animationDelay: '500ms'}}>
+      <div className="bg-white rounded-xl shadow-sm border border-stone-100 p-6">
         <div className="text-center space-y-4">
           <div>
             <h4 className="text-sm font-medium text-slate-700 mb-3">Daily Targets</h4>
@@ -199,40 +198,6 @@ const GoalsTab: React.FC<GoalsTabProps> = ({
       </div>
 
 
-      {/* Custom animations */}
-      <style jsx>{`
-        @keyframes scale-in {
-          from {
-            opacity: 0;
-            transform: scale(0.8);
-          }
-          to {
-            opacity: 1;
-            transform: scale(1);
-          }
-        }
-        
-        @keyframes fade-in-up {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        
-        .animate-scale-in {
-          animation: scale-in 0.5s ease-out forwards;
-          opacity: 0;
-        }
-        
-        .animate-fade-in-up {
-          animation: fade-in-up 0.4s ease-out forwards;
-          opacity: 0;
-        }
-      `}</style>
     </div>
   );
 };

@@ -50,7 +50,6 @@ interface MonthlyTabProps {
   previousData: SummaryData | null;
   loading: boolean;
   isActive: boolean;
-  currentMonthDate: Date;
   isCurrentMonth: () => boolean;
   changeMonth: (offset: number) => void;
 }
@@ -60,7 +59,6 @@ const MonthlyTab: React.FC<MonthlyTabProps> = ({
   previousData,
   loading,
   isActive,
-  currentMonthDate,
   isCurrentMonth,
   changeMonth
 }) => {

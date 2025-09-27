@@ -152,7 +152,6 @@ const SummaryDisplay: React.FC<SummaryDisplayProps> = ({ session }) => {
             previousData={null} // Disabled until proper previous data fetching is implemented
             loading={loadingWeekly}
             isActive={true}
-            currentWeekDate={currentWeekDate}
             isCurrentWeek={isCurrentWeek}
             changeWeek={changeWeek}
           />
@@ -162,7 +161,6 @@ const SummaryDisplay: React.FC<SummaryDisplayProps> = ({ session }) => {
             previousData={null} // Disabled until proper previous data fetching is implemented
             loading={loadingMonthly}
             isActive={true}
-            currentMonthDate={currentMonthDate}
             isCurrentMonth={isCurrentMonth}
             changeMonth={changeMonth}
           />
