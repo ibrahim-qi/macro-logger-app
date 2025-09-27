@@ -93,7 +93,7 @@ const EntriesTab: React.FC<EntriesTabProps> = ({
           
           <div className="bg-white rounded-xl shadow-sm border border-stone-100 overflow-hidden">
             <div className="divide-y divide-stone-50">
-              {entries.map((entry, index) => (
+              {entries.map((entry) => (
                 <div 
                   key={entry.id} 
                   className="flex items-center justify-between p-4 transition-all duration-200"

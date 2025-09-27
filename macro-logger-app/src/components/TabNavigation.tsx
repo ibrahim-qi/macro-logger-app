@@ -43,7 +43,7 @@ const TabNavigation: React.FC<TabNavigationProps> = ({
         {tabs.map((tab, index) => (
           <button
             key={tab.id}
-            ref={(el) => (tabRefs.current[index] = el)}
+            ref={(el) => { tabRefs.current[index] = el; }}
             onClick={() => onTabChange(tab.id)}
             className={`
               flex-1 py-4 px-6 text-base font-medium transition-all duration-200 ease-out
