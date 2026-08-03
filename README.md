@@ -106,6 +106,17 @@ npm run build
 ```
 The production files will be located in the `dist` directory.
 
+## Deployment (Vercel)
+
+This app is deployed on [Vercel](https://vercel.com). Connect the GitHub repository and configure:
+
+*   **Framework Preset:** Vite
+*   **Build Command:** `npm run build`
+*   **Output Directory:** `dist`
+*   **Environment Variables:** `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
+
+After deploying, add your Vercel site URL to Supabase Auth redirect URLs (Authentication → URL Configuration).
+
 ## PWA Icons & Manifest
 
 *   Ensure the following icons are present in the `public` directory:

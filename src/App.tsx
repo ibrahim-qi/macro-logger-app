@@ -53,7 +53,7 @@ function App() {
   }
 
   return (
-    <Router basename="/macro-logger">
+    <Router>
       {!session ? (
         // Enhanced Auth UI - matching app design system
         <div className="flex items-center justify-center min-h-screen px-4 bg-stone-50">
