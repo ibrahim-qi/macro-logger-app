@@ -47,7 +47,7 @@ Follow these steps to get the project running locally:
     ```
 
 3.  **Set Up Environment Variables:**
-    *   Create a file named `.env.local` in the root of the `macro-logger-app` project directory (alongside `package.json`).
+    *   Create a file named `.env.local` in the project root (alongside `package.json`).
     *   Add your Supabase project URL and anon key to this file:
         ```env
         VITE_SUPABASE_URL=your_supabase_project_url

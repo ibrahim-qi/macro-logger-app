@@ -1,5 +1,4 @@
-# This file should be in the 'macro-logger-app' directory, 
-# which is set as the 'Base directory' in Netlify build settings.
+# Netlify base directory should be the repository root (leave blank in build settings).
 
 # 1. Redirect root of macrologger.netlify.app to its /macro-logger path (no slash)
 [[redirects]]
