@@ -1,4 +1,5 @@
 import type { ExperienceContext } from '../types/experience';
+import type { ParseProgressStage } from '../types/mealParse';
 import { mealPeriodPrompt, timeOfDayLabel } from '../utils/experience';
 
 function withName(prefix: string, ctx: ExperienceContext): string {
@@ -95,20 +96,6 @@ export function getReviewHint(ctx: ExperienceContext): string {
   return 'Tweak anything that looks off, then confirm each item before logging.';
 }
 
-export function getStatsIntro(ctx: ExperienceContext): string {
-  if (ctx.weeklyDaysLogged !== null && ctx.weeklyDaysLogged >= 5) {
-    return ctx.firstName
-      ? `Steady week, ${ctx.firstName} — ${ctx.weeklyDaysLogged} days logged.`
-      : `Steady week — ${ctx.weeklyDaysLogged} days logged.`;
-  }
-
-  if (ctx.weeklyDaysLogged !== null && ctx.weeklyDaysLogged > 0) {
-    return `${ctx.weeklyDaysLogged} day${ctx.weeklyDaysLogged === 1 ? '' : 's'} logged this week`;
-  }
-
-  return ctx.firstName ? `Your nutrition trends, ${ctx.firstName}` : 'Your nutrition trends';
-}
-
 export function getLogPageLabel(ctx: ExperienceContext): string {
   return ctx.hasLoggedToday ? 'Add another meal' : 'Start logging';
 }
@@ -199,4 +186,139 @@ export function getGoalsUpdateButton(): string {
 
 export function getGoalsSavingButton(): string {
   return 'Saving…';
+}
+
+/** Parse loading — stage labels streamed from the edge function. */
+export function getParseStageLabel(
+  stage: ParseProgressStage | null,
+  mode: 'voice' | 'text',
+  firstName?: string | null,
+): string {
+  const gotIt = firstName ? `Got it, ${firstName}` : 'Got it';
+
+  switch (stage) {
+    case 'transcribing':
+      return gotIt;
+    case 'identifying':
+      return 'Picking out the foods';
+    case 'looking_up':
+      return 'Checking UK sources';
+    case 'estimating':
+      return 'Adding it all up';
+    default:
+      return mode === 'text' ? 'Reading your meal' : gotIt;
+  }
+}
+
+/** Shown once after 8s on the same displayed stage (long-wait reassurance). */
+export function getParseStageSublabel(stage: ParseProgressStage | null): string {
+  if (stage === 'looking_up') return 'Still checking — a few more seconds';
+  return 'Nearly there';
+}
+
+export function getResearchTrustLine(): string {
+  return 'UK evidence used where available';
+}
+
+export function getVoiceProcessingHint(): string {
+  return 'Got it — one moment';
+}
+
+export function getVoiceLongRecordingHint(): string {
+  return 'Long one — tap Done when you\'re finished';
+}
+
+export function getTextParsingCtaLabel(): string {
+  return 'One moment…';
+}
+
+/** Short preview for the parse loading sheet — full text stays on the review screen. */
+export function formatParseTranscriptPreview(transcript: string, maxChars = 120): string {
+  const trimmed = transcript.trim().replace(/\s+/g, ' ');
+  if (trimmed.length <= maxChars) return trimmed;
+  const slice = trimmed.slice(0, maxChars);
+  const lastSpace = slice.lastIndexOf(' ');
+  const cut = lastSpace > maxChars * 0.6 ? slice.slice(0, lastSpace) : slice;
+  return `${cut.trim()}…`;
+}
+
+export function isLongParseTranscript(transcript: string | null | undefined): boolean {
+  return Boolean(transcript && transcript.trim().length > 120);
+}
+
+export function getGenericParseFailureMessage(): string {
+  return 'We couldn\'t work that one out. Edit what you said and retry.';
+}
+
+export function getNetworkUnreachableMessage(): string {
+  return 'Can\'t reach Sahha right now. Check your connection and try again.';
+}
+
+export function getSessionExpiredMessage(): string {
+  return 'Your session expired — sign in again to keep logging.';
+}
+
+export function getParseErrorTitle(): string {
+  return 'Let\'s try that again';
+}
+
+export function getTodayLoadFailureMessage(): string {
+  return 'Couldn\'t load this day. Pull to refresh or try again shortly.';
+}
+
+export function getEntryDeleteFailureMessage(): string {
+  return 'Couldn\'t delete that entry. Try again.';
+}
+
+export function getEntryUpdateFailureMessage(): string {
+  return 'Couldn\'t update that entry. Try again.';
+}
+
+export function getNoGoalsHeroMessage(): string {
+  return 'Set daily targets to track your day';
+}
+
+export function getSetTargetsCta(): string {
+  return 'Set targets';
+}
+
+export function getWeeklySummaryFailureMessage(): string {
+  return 'Couldn\'t load this week. Try again shortly.';
+}
+
+export function getMonthlySummaryFailureMessage(): string {
+  return 'Couldn\'t load this month. Try again shortly.';
+}
+
+export function getGoalsSaveFailureMessage(): string {
+  return 'Couldn\'t save your targets. Try again.';
+}
+
+export function getNoSpeechMessage(): string {
+  return 'We didn\'t catch that. Tap the mic and say what you ate.';
+}
+
+export function getNoMealDetectedMessage(): string {
+  return 'That didn\'t sound like a meal. Try something like "two eggs and toast", or type it below.';
+}
+
+export function getNothingEatenMessage(): string {
+  return 'Nothing to log this time. Come back after your next meal.';
+}
+
+export function getRejectionTitle(): string {
+  return 'Nothing to log yet';
+}
+
+export function getRejectionMessage(
+  reason: 'no_speech' | 'no_meal_detected' | 'nothing_eaten',
+): string {
+  switch (reason) {
+    case 'no_speech':
+      return getNoSpeechMessage();
+    case 'no_meal_detected':
+      return getNoMealDetectedMessage();
+    case 'nothing_eaten':
+      return getNothingEatenMessage();
+  }
 }

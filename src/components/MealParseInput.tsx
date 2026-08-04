@@ -10,12 +10,23 @@ import {
 import { useAudioRecorder } from '../hooks/useAudioRecorder';
 import { SahhaMark } from './SahhaBrand';
 import type { ParseMealResponse, ParseProgressStage } from '../types/mealParse';
-import { formatInvokeError, invokeParseMeal, invokeParseMealVoice } from '../utils/parseMeal';
-import { assertRecordingHasSpeech, normalizeAudioMimeType } from '../utils/transcriptValidation';
+import {
+  getVoiceLongRecordingHint,
+  getVoiceProcessingHint,
+  getTextParsingCtaLabel,
+} from '../copy/experience';
+import { invokeParseMeal, invokeParseMealVoice, toParseErrorPayload } from '../utils/parseMeal';
+import type { ParseErrorPayload } from '../utils/parseRejection.ts';
+import {
+  assertRecordingHasSpeech,
+  assertTranscriptLooksLikeFood,
+  normalizeAudioMimeType,
+} from '../utils/transcriptValidation';
 import { hapticLight, hapticMedium } from '../utils/haptics';
 
 export interface MealParseInputHandle {
   cancel: () => void;
+  focusMic: () => void;
 }
 
 export interface ParseStartPayload {
@@ -28,7 +39,7 @@ interface MealParseInputProps {
   onParseStart?: (payload: ParseStartPayload) => void;
   onTranscript?: (transcript: string) => void;
   onParseProgress?: (stage: ParseProgressStage) => void;
-  onParseError?: (message: string) => void;
+  onParseError?: (payload: ParseErrorPayload) => void;
   /** Hide mic hints while the review sheet is open. */
   reviewActive?: boolean;
 }
@@ -52,28 +63,45 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastTranscript, setLastTranscript] = useState<string | null>(null);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [isPressing, setIsPressing] = useState(false);
   const [rippleKey, setRippleKey] = useState(0);
   const parseGenerationRef = useRef(0);
   const finishingRef = useRef(false);
-  const { isRecording, isSupported, audioLevel, startRecording, stopRecording } = useAudioRecorder();
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const micButtonRef = useRef<HTMLButtonElement>(null);
+  const {
+    isRecording,
+    isSupported,
+    audioLevel,
+    startRecording,
+    stopRecording,
+    cancelRecording,
+  } = useAudioRecorder();
 
   const startNewParseGeneration = () => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = new AbortController();
     parseGenerationRef.current += 1;
-    return parseGenerationRef.current;
+    return {
+      generation: parseGenerationRef.current,
+      signal: abortControllerRef.current.signal,
+    };
   };
 
   const isCurrentParse = (generation: number) => generation === parseGenerationRef.current;
 
   useImperativeHandle(ref, () => ({
     cancel: () => {
-      startNewParseGeneration();
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = null;
+      parseGenerationRef.current += 1;
+      if (isRecording) cancelRecording();
       setLoading(false);
       setError(null);
     },
-  }));
+    focusMic: () => micButtonRef.current?.focus(),
+  }), [cancelRecording, isRecording]);
 
   useEffect(() => {
     if (!isRecording) {
@@ -90,27 +118,47 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
   }, [isRecording]);
 
   const handleParseText = async () => {
+    if (reviewActive) return;
     const trimmed = text.trim();
     if (!trimmed) { setError('Describe what you ate first.'); return; }
 
-    const generation = startNewParseGeneration();
+    try {
+      assertTranscriptLooksLikeFood(trimmed);
+    } catch (err: unknown) {
+      const payload = toParseErrorPayload(err);
+      setError(payload.message);
+      return;
+    }
+
+    const { generation, signal } = startNewParseGeneration();
     setLoading(true);
     setError(null);
     hapticLight();
     onParseStart?.({ mode: 'text', previewText: trimmed });
 
     try {
-      const data = await invokeParseMeal({ text: trimmed });
+      const data = await invokeParseMeal(
+        { text: trimmed },
+        {
+          onProgress: (stage) => {
+            if (!isCurrentParse(generation)) return;
+            onParseProgress?.(stage);
+          },
+          signal,
+        },
+      );
       if (!isCurrentParse(generation)) return;
       onParsed(data);
       setText('');
     } catch (err: unknown) {
       if (!isCurrentParse(generation)) return;
-      const message = formatInvokeError(err);
-      setError(message);
-      onParseError?.(message);
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      onParseError?.(toParseErrorPayload(err));
     } finally {
-      if (isCurrentParse(generation)) setLoading(false);
+      if (isCurrentParse(generation)) {
+        abortControllerRef.current = null;
+        setLoading(false);
+      }
     }
   };
 
@@ -119,7 +167,7 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
   };
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (event.button !== 0 || loading) return;
+    if (event.button !== 0 || loading || reviewActive) return;
     setIsPressing(true);
   };
 
@@ -136,6 +184,8 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
       return;
     }
 
+    if (reviewActive) return;
+
     try {
       hapticMedium();
       await startRecording();
@@ -148,21 +198,18 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
     if (!isRecording || finishingRef.current) return;
 
     finishingRef.current = true;
-    const generation = startNewParseGeneration();
+    const { generation, signal } = startNewParseGeneration();
     hapticLight();
 
     setLoading(true);
-    let reviewOpened = false;
+    onParseStart?.({ mode: 'voice' });
 
     try {
-      const { base64, mimeType, durationMs, peakLevel } = await stopRecording();
+      const { base64, mimeType, durationMs, peakLevel, voicedMs } = await stopRecording();
       if (!isCurrentParse(generation)) return;
 
       const audioBytes = Math.floor((base64.length * 3) / 4);
-      assertRecordingHasSpeech(durationMs, peakLevel, audioBytes);
-
-      onParseStart?.({ mode: 'voice' });
-      reviewOpened = true;
+      assertRecordingHasSpeech(durationMs, peakLevel, audioBytes, voicedMs);
 
       const data = await invokeParseMealVoice(
         {
@@ -172,7 +219,6 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
         {
           onTranscript: (transcript) => {
             if (!isCurrentParse(generation)) return;
-            setLastTranscript(transcript);
             setText(transcript);
             onTranscript?.(transcript);
           },
@@ -180,6 +226,7 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
             if (!isCurrentParse(generation)) return;
             onParseProgress?.(stage);
           },
+          signal,
         },
       );
       if (!isCurrentParse(generation)) return;
@@ -189,19 +236,29 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
       onParsed({ ...data, transcript: transcript || undefined });
     } catch (err: unknown) {
       if (!isCurrentParse(generation)) return;
-      const message = formatInvokeError(err);
-      if (reviewOpened) {
-        onParseError?.(message);
-      } else {
-        setError(message);
-      }
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      const payload = toParseErrorPayload(err);
+      onParseError?.(payload);
     } finally {
       finishingRef.current = false;
-      if (isCurrentParse(generation)) setLoading(false);
+      if (isCurrentParse(generation)) {
+        abortControllerRef.current = null;
+        setLoading(false);
+      }
     }
   };
 
-  const isProcessing = loading && !isRecording;
+  const handleCancelRecording = () => {
+    cancelRecording();
+    finishingRef.current = false;
+    setLoading(false);
+    setError(null);
+    hapticLight();
+    window.setTimeout(() => micButtonRef.current?.focus(), 0);
+  };
+
+  const isProcessing = loading && !isRecording && !reviewActive;
+  const micDisabled = reviewActive || (loading && !isRecording) || !isSupported;
   const voiceStyle = { '--voice-level': isRecording ? audioLevel : 0 } as CSSProperties;
 
   let voiceHint: VoiceHint = 'idle';
@@ -211,19 +268,18 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
   return (
     <div className="log-voice-input">
       <div
-        className={`sahha-voice sahha-voice--log ${isRecording ? 'sahha-voice--live' : ''} ${isProcessing ? 'sahha-voice--busy' : ''} ${!isRecording && !isProcessing ? 'sahha-voice--idle' : ''}`}
+        className={`sahha-voice sahha-voice--log ${isRecording ? 'sahha-voice--live' : ''} ${isProcessing ? 'sahha-voice--busy' : ''} ${reviewActive ? 'sahha-voice--dimmed' : ''} ${!isRecording && !isProcessing ? 'sahha-voice--idle' : ''}`}
         style={voiceStyle}
       >
-        <div className="sahha-voice__divider" aria-hidden="true" />
-
         <button
+          ref={micButtonRef}
           type="button"
           onClick={handleVoiceToggle}
           onPointerDown={handlePointerDown}
           onPointerUp={clearPress}
           onPointerLeave={clearPress}
           onPointerCancel={clearPress}
-          disabled={isProcessing || !isSupported}
+          disabled={micDisabled}
           aria-label={isRecording ? 'Finish speaking' : 'Start voice recording'}
           aria-pressed={isRecording}
           className={[
@@ -252,46 +308,69 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
 
         <div className="sahha-voice__status">
           {isRecording && (
-            <p key="timer" className="sahha-voice__timer tabular-nums" aria-live="polite">
+            <p key="timer" className="sahha-voice__timer tabular-nums" aria-live="off" aria-label={`${recordingSeconds} seconds recorded`}>
               {formatRecordingTime(recordingSeconds)}
             </p>
           )}
 
           {isSupported && !reviewActive && (
             <p key={voiceHint} className="sahha-voice__hint">
-              {voiceHint === 'listening' && 'Listening…'}
-              {voiceHint === 'analysing' && 'Processing…'}
+              {voiceHint === 'listening' && (
+                recordingSeconds >= 60
+                  ? getVoiceLongRecordingHint()
+                  : 'Listening…'
+              )}
+              {voiceHint === 'analysing' && getVoiceProcessingHint()}
               {voiceHint === 'idle' && 'Tap to speak'}
             </p>
+          )}
+          {!isSupported && (
+            <p className="sahha-voice__hint">Voice recording is not supported here. Type your meal below.</p>
+          )}
+          {isRecording && (
+            <button
+              type="button"
+              className="sahha-voice__cancel"
+              onClick={handleCancelRecording}
+            >
+              Cancel recording
+            </button>
           )}
         </div>
       </div>
 
       <div className="log-type-section">
-        <p className="log-type-section__label">or type</p>
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          rows={2}
-          placeholder="Large grilled chicken, bowl of porridge…"
-          className="input-premium resize-none text-base"
-          disabled={loading || isRecording}
-        />
-
-        {lastTranscript && !loading && (
-          <p className="mt-2 type-meta">
-            Heard: &ldquo;{lastTranscript}&rdquo;
-          </p>
-        )}
-
-        <button
-          type="button"
-          onClick={handleParseText}
-          disabled={loading || isRecording || !text.trim()}
-          className="btn-primary mt-3 w-full"
-        >
-          {isProcessing && !reviewActive ? 'Working…' : 'Log meal'}
-        </button>
+        <div className="log-type-field">
+          <input
+            type="text"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && text.trim() && !loading && !isRecording && !reviewActive) {
+                e.preventDefault();
+                void handleParseText();
+              }
+            }}
+            placeholder="…or type it"
+            className="log-type-field__input"
+            disabled={loading || isRecording || reviewActive}
+          />
+          <button
+            type="button"
+            onClick={handleParseText}
+            disabled={loading || isRecording || reviewActive || !text.trim()}
+            className={`log-type-field__submit ${text.trim() ? 'log-type-field__submit--ready' : ''}`}
+            aria-label={loading && !isRecording ? getTextParsingCtaLabel() : 'Log typed meal'}
+          >
+            {loading && !isRecording ? (
+              <span className="spinner log-type-field__spinner" aria-hidden="true" />
+            ) : (
+              <svg className="log-type-field__submit-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.25} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+              </svg>
+            )}
+          </button>
+        </div>
       </div>
 
       {error && (

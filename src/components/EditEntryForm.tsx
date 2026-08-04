@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getEntryUpdateFailureMessage } from '../copy/experience';
 
 interface FoodEntryData {
   food_name: string;
@@ -81,7 +82,7 @@ const EditEntryForm: React.FC<EditEntryFormProps> = ({ entry, onSave, onCancel }
       await onSave(updatedData);
     } catch (error: unknown) {
       console.error('Error saving entry:', error);
-      setErrorMessage(error instanceof Error ? error.message : 'Failed to save entry. Please try again.');
+      setErrorMessage(getEntryUpdateFailureMessage());
     } finally {
       setIsLoading(false);
     }

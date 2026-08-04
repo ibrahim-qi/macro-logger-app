@@ -67,4 +67,30 @@ assert(applied[3].calories === 50, '-es plural matches saved cookie name');
 assert(applied[3].from_saved_food === true, 'cookie plural marked as saved');
 assert(applied[3].food_name === 'cookie', 'canonical saved name applied for -es plural');
 
+const explicitWeight = applySavedFoods(
+  [
+    {
+      food_name: 'chicken breast',
+      calories: 250,
+      protein: 50,
+      carbs: 0,
+      fats: 5,
+      quantity: 1,
+      reference_weight_g: 150,
+      confidence: 'medium',
+    },
+  ],
+  [{ food_name: 'chicken breast', calories: 999, protein: 99, carbs: 0, fats: 99 }],
+  '150g chicken breast',
+);
+assert(explicitWeight[0].calories === 250, 'explicit weight in meal text skips saved-food override');
+assert(explicitWeight[0].reference_weight_g === 150, 'preserve reference_weight_g when skipping override');
+
+const noWeight = applySavedFoods(
+  [{ food_name: 'chicken breast', calories: 250, protein: 50, carbs: 0, fats: 5, quantity: 1 }],
+  [{ food_name: 'chicken breast', calories: 999, protein: 99, carbs: 0, fats: 99 }],
+  'chicken breast',
+);
+assert(noWeight[0].calories === 999, 'weightless input still applies saved food');
+
 console.log('All saved food matching checks passed.');

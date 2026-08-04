@@ -60,7 +60,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ handleLogout }) => {
             <div className="dock__fab-wrap">
               <NavLink to="/log" aria-label="Log meal">
                 <div className={`dock__fab ${isLog ? 'dock__fab--active' : ''}`}>
-                  <svg className="w-7 h-7 text-[var(--color-bg)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="dock__fab-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.25} d="M12 4v16m8-8H4" />
                   </svg>
                 </div>

@@ -13,8 +13,13 @@ import TabNavigation from './TabNavigation';
 import EntriesTab from './EntriesTab';
 import GoalsTab from './GoalsTab';
 import { formatLocalDateKey, localDayBounds } from '../utils/localDate';
-import { useUserExperience } from '../context/UserExperienceContext';
-import { useToast } from '../context/ToastContext';
+import {
+  getEntryDeleteFailureMessage,
+  getEntryUpdateFailureMessage,
+  getTodayLoadFailureMessage,
+} from '../copy/experience';
+import { useUserExperience } from '../context/userExperience';
+import { useToast } from '../context/toast';
 import { getDeleteEntryBody, getDeleteEntryTitle, getLogSuccessToast } from '../copy/experience';
 
 interface FoodEntry {
@@ -104,7 +109,7 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
   const fetchEntries = useCallback(async (date: Date) => {
     setLoading(true);
     setError(null);
-    const { dayStart, dayEnd, dateKey } = localDayBounds(date, timezone);
+    const { dayStart, dayEnd } = localDayBounds(date, timezone);
 
     try {
       const { data, error: fetchError } = await supabase
@@ -118,9 +123,9 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
       if (fetchError) throw fetchError;
 
       setEntries(data || []);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error fetching food entries:', err);
-      setError(`Failed to load entries for ${dateKey}: ${err.message}`);
+      setError(getTodayLoadFailureMessage());
       setEntries([]);
     } finally {
       setLoading(false);
@@ -166,7 +171,7 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
       } else {
         setUserGoals(data);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error fetching user goals:', err);
       setUserGoals(null);
     } finally {
@@ -208,9 +213,9 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
       fetchStreak();
       refreshExperience();
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error deleting entry:', err);
-      setError(`Failed to delete entry: ${err.message}`);
+      setError(getEntryDeleteFailureMessage());
       // Optional: Clear error after a few seconds
       setTimeout(() => setError(null), 5000); 
     }
@@ -332,9 +337,9 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
         throw new Error("No data returned after update.");
       }
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error updating entry:', err);
-      setError(`Failed to update entry: ${err.message}`);
+      setError(getEntryUpdateFailureMessage());
       // The error will be displayed in EditEntryForm, but we could also set a global error here if desired
       // For now, let EditEntryForm handle its own error display during submission
       throw err; // Re-throw to allow EditEntryForm to catch it and manage its loading/error state
@@ -398,6 +403,7 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
           dailyTotals={dailyTotals}
           userGoals={userGoals}
           streak={streak}
+          onSetTargets={handleGoalsClick}
         />
       )}
 

@@ -1,6 +1,18 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
+import {
+  getGenericParseFailureMessage,
+  getNetworkUnreachableMessage,
+  getSessionExpiredMessage,
+} from '../copy/experience';
 import { supabase } from '../supabaseClient';
-import type { ParseMealResponse, ParseProgressStage, ParseProgressState, TranscribeMealResponse } from '../types/mealParse';
+import type { ParseMealResponse, ParseProgressStage, ParseProgressState } from '../types/mealParse';
+import {
+  isParseRejectionError,
+  ParseRejectionError,
+  type ParseErrorPayload,
+  type ParseRejectionCode,
+} from './parseRejection.ts';
+import { getRejectionMessage } from '../copy/experience';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -35,15 +47,54 @@ function isParseProgressStage(value: string): value is ParseProgressStage {
   return PROGRESS_STAGES.has(value);
 }
 
-async function readFunctionError(error: FunctionsHttpError): Promise<string | null> {
+async function readFunctionError(error: FunctionsHttpError): Promise<{
+  message: string;
+  code?: ParseRejectionCode;
+  transcript?: string;
+} | null> {
   const response = error.context as Response | undefined;
   if (!response?.json) return null;
   try {
-    const payload = await response.json() as { error?: string; message?: string };
-    return payload.error ?? payload.message ?? null;
+    const payload = await response.json() as {
+      error?: string;
+      message?: string;
+      code?: ParseRejectionCode;
+      transcript?: string;
+    };
+    return {
+      message: payload.error ?? payload.message ?? 'Failed to parse meal',
+      code: payload.code,
+      transcript: payload.transcript,
+    };
   } catch {
     return null;
   }
+}
+
+function throwFromFunctionError(detail: {
+  message: string;
+  code?: ParseRejectionCode;
+  transcript?: string;
+}): never {
+  if (detail.code) {
+    throw new ParseRejectionError(detail.code, detail.transcript);
+  }
+  throw new Error(detail.message);
+}
+
+export function toParseErrorPayload(error: unknown): ParseErrorPayload {
+  if (isParseRejectionError(error)) {
+    return {
+      message: getRejectionMessage(error.code),
+      kind: 'rejection',
+      reason: error.code,
+      transcript: error.transcript,
+    };
+  }
+  return {
+    message: formatInvokeError(error),
+    kind: 'failure',
+  };
 }
 
 async function invokeMealFunction<T>(body: Record<string, unknown>) {
@@ -52,7 +103,7 @@ async function invokeMealFunction<T>(body: Record<string, unknown>) {
   if (error) {
     if (error instanceof FunctionsHttpError) {
       const detail = await readFunctionError(error);
-      if (detail) throw new Error(detail);
+      if (detail) throwFromFunctionError(detail);
     }
     throw error;
   }
@@ -95,71 +146,13 @@ async function readNdjsonStream(
   }
 }
 
-export async function invokeTranscribeMeal(body: { audio: string; mimeType: string }) {
-  const data = await invokeMealFunction<TranscribeMealResponse>({
-    ...body,
-    action: 'transcribe',
-  });
-
-  const transcript = data?.transcript?.trim();
-  if (!transcript) {
-    throw new Error('Could not transcribe audio. Try speaking again or type your meal.');
-  }
-
-  return { transcript };
-}
-
-export async function invokeParseMeal(body: {
-  text?: string;
-  audio?: string;
-  mimeType?: string;
-}) {
-  const payload: Record<string, unknown> = { action: 'parse' };
-
-  if (body.audio) {
-    payload.audio = body.audio;
-    payload.mimeType = body.mimeType ?? 'audio/webm';
-  } else if (body.text?.trim()) {
-    payload.text = body.text.trim();
-  } else {
-    throw new Error('Meal description text or audio is required.');
-  }
-
-  const data = await invokeMealFunction<ParseMealResponse>(payload);
-
-  if (!data?.items?.length) {
-    throw new Error('No food items were found in that description.');
-  }
-
-  return data;
-}
-
-async function getFreshAccessToken(): Promise<string> {
-  const { data: { session: initial }, error: sessionError } = await supabase.auth.getSession();
-  if (sessionError || !initial?.access_token) {
-    throw new Error('Your session expired. Sign out and sign back in.');
-  }
-
-  const expiresAt = initial.expires_at ?? 0;
-  const now = Math.floor(Date.now() / 1000);
-  if (expiresAt - now > 60) {
-    return initial.access_token;
-  }
-
-  const { data: { session: refreshed }, error: refreshError } = await supabase.auth.refreshSession();
-  if (refreshError || !refreshed?.access_token) {
-    throw new Error('Your session expired. Sign out and sign back in.');
-  }
-
-  return refreshed.access_token;
-}
-
-/** Voice parse over one connection — streams transcript before macros finish. */
-export async function invokeParseMealVoice(
-  body: { audio: string; mimeType: string },
+/** Voice or text parse over one connection — streams progress before macros finish. */
+async function invokeParseMealStream(
+  body: Record<string, unknown>,
   callbacks?: {
     onTranscript?: (transcript: string) => void;
     onProgress?: (stage: ParseProgressStage) => void;
+    signal?: AbortSignal;
   },
 ): Promise<ParseMealResponse> {
   const accessToken = await getFreshAccessToken();
@@ -173,20 +166,26 @@ export async function invokeParseMealVoice(
     body: JSON.stringify({
       action: 'parse',
       stream: true,
-      audio: body.audio,
-      mimeType: body.mimeType ?? 'audio/webm',
+      ...body,
     }),
+    signal: callbacks?.signal,
   });
 
   if (!response.ok) {
-    let message = 'Meal parser failed. Sign in again or try in a moment.';
     try {
-      const payload = await response.json() as { error?: string };
-      if (payload.error) message = payload.error;
-    } catch {
-      // ignore
+      const payload = await response.json() as {
+        error?: string;
+        code?: ParseRejectionCode;
+        transcript?: string;
+      };
+      if (payload.code) {
+        throw new ParseRejectionError(payload.code, payload.transcript);
+      }
+      if (payload.error) throw new Error(payload.error);
+    } catch (err) {
+      if (isParseRejectionError(err) || err instanceof Error) throw err;
     }
-    throw new Error(message);
+    throw new Error('Meal parser failed. Sign in again or try in a moment.');
   }
 
   let parsedMeal: ParseMealResponse | undefined;
@@ -201,6 +200,13 @@ export async function invokeParseMealVoice(
     if (event.event === 'transcript' && typeof event.transcript === 'string') {
       const transcript = event.transcript.trim();
       if (transcript) callbacks?.onTranscript?.(transcript);
+      return;
+    }
+
+    if (event.event === 'rejected' && typeof event.reason === 'string') {
+      const reason = event.reason as ParseRejectionCode;
+      const transcript = typeof event.transcript === 'string' ? event.transcript : undefined;
+      streamError = new ParseRejectionError(reason, transcript);
       return;
     }
 
@@ -237,29 +243,122 @@ export async function invokeParseMealVoice(
   return parsedMeal;
 }
 
-export function formatInvokeError(error: unknown): string {
-  if (!(error instanceof Error)) return 'Could not reach the meal parser. Try again.';
+async function invokeParseMealPlain(body: Record<string, unknown>): Promise<ParseMealResponse> {
+  const data = await invokeMealFunction<ParseMealResponse>(body);
+
+  if (!data?.items?.length) {
+    throw new Error('No food items were found in that description.');
+  }
+
+  return data;
+}
+
+export async function invokeParseMeal(
+  body: {
+    text?: string;
+    audio?: string;
+    mimeType?: string;
+  },
+  callbacks?: {
+    onProgress?: (stage: ParseProgressStage) => void;
+    signal?: AbortSignal;
+  },
+): Promise<ParseMealResponse> {
+  if (body.text?.trim()) {
+    try {
+      return await invokeParseMealStream({ text: body.text.trim() }, callbacks);
+    } catch (err) {
+      if (isParseRejectionError(err)) throw err;
+      if (err instanceof DOMException && err.name === 'AbortError') throw err;
+      return invokeParseMealPlain({ text: body.text.trim() });
+    }
+  }
+
+  const payload: Record<string, unknown> = { action: 'parse' };
+
+  if (body.audio) {
+    payload.audio = body.audio;
+    payload.mimeType = body.mimeType ?? 'audio/webm';
+  } else {
+    throw new Error('Meal description text or audio is required.');
+  }
+
+  return invokeParseMealPlain(payload);
+}
+
+async function getFreshAccessToken(): Promise<string> {
+  const { data: { session: initial }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError || !initial?.access_token) {
+    throw new Error('Your session expired. Sign out and sign back in.');
+  }
+
+  const expiresAt = initial.expires_at ?? 0;
+  const now = Math.floor(Date.now() / 1000);
+  if (expiresAt - now > 60) {
+    return initial.access_token;
+  }
+
+  const { data: { session: refreshed }, error: refreshError } = await supabase.auth.refreshSession();
+  if (refreshError || !refreshed?.access_token) {
+    throw new Error('Your session expired. Sign out and sign back in.');
+  }
+
+  return refreshed.access_token;
+}
+
+/** Voice parse over one connection — streams transcript before macros finish. */
+export async function invokeParseMealVoice(
+  body: { audio: string; mimeType: string },
+  callbacks?: {
+    onTranscript?: (transcript: string) => void;
+    onProgress?: (stage: ParseProgressStage) => void;
+    signal?: AbortSignal;
+  },
+): Promise<ParseMealResponse> {
+  return invokeParseMealStream(
+    {
+      audio: body.audio,
+      mimeType: body.mimeType ?? 'audio/webm',
+    },
+    callbacks,
+  );
+}
+
+function formatInvokeError(error: unknown): string {
+  if (isParseRejectionError(error)) {
+    return getRejectionMessage(error.code);
+  }
+  if (!(error instanceof Error)) return getGenericParseFailureMessage();
   const msg = error.message;
+
   if (msg.includes('Failed to send a request to the Edge Function')) {
-    return 'Meal parser is unavailable. Check your connection and try again.';
+    return getNetworkUnreachableMessage();
   }
   if (msg.includes('Edge Function returned a non-2xx status code')) {
-    return 'Meal parser failed. Sign in again or try in a moment.';
+    return getNetworkUnreachableMessage();
   }
   if (msg.toLowerCase().includes('unauthorized') || msg.includes('401')) {
-    return 'Your session expired. Sign out and sign back in.';
+    return getSessionExpiredMessage();
+  }
+  if (msg.includes('Your session expired')) {
+    return getSessionExpiredMessage();
   }
   if (msg.includes('NANOGPT_API_KEY')) {
     return 'Meal parser is not configured on the server yet.';
   }
   if (msg.includes('NanoGPT parse error') || msg.includes('NanoGPT transcription error')) {
-    return msg.replace(/^NanoGPT \w+ error \(\d+\): /, 'Parser error: ');
+    return getGenericParseFailureMessage();
   }
   if (/audio validation failed/i.test(msg)) {
     return 'Recording could not be processed. Hold the mic a little longer and speak clearly.';
   }
   if (msg.includes('Recording could not be processed') || msg.includes('too short or empty')) {
     return msg;
+  }
+  if (
+    /NanoGPT|Edge Function|Parser error|\b401\b|\b403\b|\b500\b|\b502\b|\b503\b/i.test(msg)
+  ) {
+    return getGenericParseFailureMessage();
   }
   return msg;
 }

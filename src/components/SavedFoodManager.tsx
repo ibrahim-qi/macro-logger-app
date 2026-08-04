@@ -62,7 +62,7 @@ const SavedFoodManager: React.FC<SavedFoodManagerProps> = ({ session, onFoodSele
 
       if (error) throw error;
       setSavedFoods(data || []);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error fetching saved foods:', err);
       setError('Could not load your saved foods.');
     } finally {
@@ -145,9 +145,9 @@ const SavedFoodManager: React.FC<SavedFoodManagerProps> = ({ session, onFoodSele
       }
       resetForm();
       setTimeout(() => setFormMessage(null), 3000);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error saving/updating food:', err);
-      setFormMessage(err.message || 'Could not save/update food.');
+      setFormMessage(err instanceof Error ? err.message : 'Could not save/update food.');
     } finally {
       setSaving(false);
     }
@@ -201,9 +201,9 @@ const SavedFoodManager: React.FC<SavedFoodManagerProps> = ({ session, onFoodSele
       setFormMessage(`"${foodName}" deleted successfully!`);
       setTimeout(() => setFormMessage(null), 3000);
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error deleting saved food:', err);
-      setFormMessage(err.message || 'Could not delete saved food.');
+      setFormMessage(err instanceof Error ? err.message : 'Could not delete saved food.');
     } finally {
       setSaving(false);
     }

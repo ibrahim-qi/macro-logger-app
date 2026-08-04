@@ -16,6 +16,7 @@ interface DatePickerProps {
   disableNext?: boolean;
   onJumpToday?: () => void;
   variant?: 'pill' | 'chip';
+  tone?: 'default' | 'quiet';
   className?: string;
 }
 
@@ -76,10 +77,12 @@ function DatePickerModal({
 function DatePickerPill({
   selectedDate,
   onOpen,
+  tone = 'default',
   className = '',
 }: {
   selectedDate: Date;
   onOpen: () => void;
+  tone?: 'default' | 'quiet';
   className?: string;
 }) {
   const viewingToday = isSelectedToday(selectedDate);
@@ -89,7 +92,7 @@ function DatePickerPill({
     <button
       type="button"
       onClick={onOpen}
-      className={`date-pill ${viewingToday ? 'date-pill--today' : ''} ${className}`.trim()}
+      className={`date-pill ${viewingToday ? 'date-pill--today' : ''} ${tone === 'quiet' ? 'date-pill--quiet' : ''} ${className}`.trim()}
       aria-label={`Viewing ${label}. Change date.`}
     >
       <svg className="date-pill__icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
@@ -117,6 +120,7 @@ const DatePicker: React.FC<DatePickerProps> = ({
   disableNext = false,
   onJumpToday,
   variant = 'pill',
+  tone = 'default',
   className = '',
 }) => {
   const [open, setOpen] = useState(false);
@@ -178,7 +182,7 @@ const DatePicker: React.FC<DatePickerProps> = ({
   return (
     <>
       {variant === 'pill' ? (
-        <DatePickerPill selectedDate={selectedDate} onOpen={() => setOpen(true)} className={className} />
+        <DatePickerPill selectedDate={selectedDate} onOpen={() => setOpen(true)} tone={tone} className={className} />
       ) : (
         <button
           type="button"

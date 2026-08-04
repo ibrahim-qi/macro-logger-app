@@ -9,14 +9,17 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "benchmark:macros": "tsx scripts/macro-benchmark/run.ts",
+    "benchmark:chains": "tsx scripts/macro-benchmark/runChains.ts",
     "benchmark:staples": "tsx scripts/macro-benchmark/runStaples.ts",
-    "test:fast-path": "tsx scripts/macro-benchmark/parseFastPath.test.ts",
     "test:normalize": "tsx scripts/macro-benchmark/normalizeItems.test.ts",
-    "test:saved-foods": "tsx scripts/macro-benchmark/applySavedFoods.test.ts"
+    "test:saved-foods": "tsx scripts/macro-benchmark/applySavedFoods.test.ts",
+    "test:nutrition": "tsx scripts/macro-benchmark/nutritionCompute.test.ts",
+    "test:web-search": "tsx scripts/macro-benchmark/webSearch.test.ts",
+    "test:parsing": "npm run test:normalize && npm run test:saved-foods && npm run test:nutrition && npm run test:web-search && npm run guardrails:unit",
+    "guardrails:unit": "tsx scripts/guardrails/unit.test.ts",
+    "guardrails:intent": "tsx scripts/guardrails/intent.test.ts"
   },
   "dependencies": {
-    "@supabase/auth-ui-react": "^0.4.7",
-    "@supabase/auth-ui-shared": "^0.1.8",
     "@supabase/supabase-js": "^2.49.4",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

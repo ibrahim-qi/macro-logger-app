@@ -38,10 +38,54 @@ function lookupSavedFood(
   return savedByName.get(normalized) ?? savedByName.get(singularize(normalized));
 }
 
+const EXPLICIT_WEIGHT = /\b\d+(?:\.\d+)?\s*(?:g|grams?|ml|millilitres?|milliliters?)\b/i;
+
+/** True when the meal text states an explicit weight/volume near this food's name. */
+function hasExplicitWeightForItem(mealText: string, foodName: string): boolean {
+  if (!mealText || !EXPLICIT_WEIGHT.test(mealText)) return false;
+
+  const tokens = foodName
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((t) => t.length >= 3)
+    .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+
+  // Weight present but food name has no usable tokens — skip the override to be safe.
+  if (!tokens.length) return true;
+
+  return tokens.some((token) => {
+    const weightBefore = new RegExp(
+      `\\d+(?:\\.\\d+)?\\s*(?:g|grams?|ml|millilitres?|milliliters?)\\b[^,.;]{0,40}\\b${token}`,
+      'i',
+    );
+    const weightAfter = new RegExp(
+      `\\b${token}\\b[^,.;]{0,40}\\d+(?:\\.\\d+)?\\s*(?:g|grams?|ml|millilitres?|milliliters?)\\b`,
+      'i',
+    );
+    return weightBefore.test(mealText) || weightAfter.test(mealText);
+  });
+}
+
+export function findSavedFoodMatch(
+  foodName: string,
+  savedFoods: SavedFoodMacros[],
+  mealText = '',
+): SavedFoodMacros | undefined {
+  if (hasExplicitWeightForItem(mealText, foodName)) return undefined;
+  const savedByName = new Map<string, SavedFoodMacros>();
+  for (const food of savedFoods) {
+    const normalized = normalizeName(food.food_name);
+    savedByName.set(normalized, food);
+    savedByName.set(singularize(normalized), food);
+  }
+  return lookupSavedFood(foodName, savedByName);
+}
+
 /** Override AI macros when the parsed name matches a saved food (exact or singular/plural). */
 export function applySavedFoods(
   items: ParsedFoodItem[],
   savedFoods: SavedFoodMacros[],
+  mealText = '',
 ): ParsedFoodItem[] {
   if (!savedFoods.length) return items;
 
@@ -55,6 +99,7 @@ export function applySavedFoods(
   return items.map((item) => {
     const match = lookupSavedFood(item.food_name, savedByName);
     if (!match) return item;
+    if (hasExplicitWeightForItem(mealText, item.food_name)) return item;
 
     return {
       ...item,
@@ -65,8 +110,13 @@ export function applySavedFoods(
       fats: Math.max(0, Number(match.fats) || 0),
       confidence: 'high',
       from_saved_food: true,
+      evidence_status: 'user_saved',
       portion_assumption: undefined,
       source_note: 'Your saved food',
+      source_title: 'Your saved food',
+      source_url: undefined,
+      reference_weight_g: undefined,
+      reference_volume_ml: undefined,
     };
   });
 }

@@ -1,7 +1,7 @@
 import React from 'react';
 import DatePicker from './DatePicker';
 import { getLogHelper, getLogTitle } from '../copy/experience';
-import { useUserExperience } from '../context/UserExperienceContext';
+import { useUserExperience } from '../context/userExperience';
 
 interface LogHeroProps {
   selectedDate: Date;
@@ -21,6 +21,7 @@ const LogHero: React.FC<LogHeroProps> = ({ selectedDate, onDateChange }) => {
           onDateChange={onDateChange}
           layout="standalone"
           variant="pill"
+          tone="quiet"
         />
       </div>
 

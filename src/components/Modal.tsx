@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
 import type { ReactNode } from 'react';
@@ -10,8 +10,10 @@ interface ModalProps {
   title?: string;
   ariaLabel?: string;
   footer?: ReactNode;
-  /** Full-height bottom sheet tuned for long scrollable content (meal review). */
-  variant?: 'default' | 'sheet';
+  /** Full-height bottom sheet, compact bottom card while parsing, or default dialog. */
+  variant?: 'default' | 'sheet' | 'sheet-compact' | 'sheet-compact-tall';
+  /** Lighter footer styling for short waiting states. */
+  footerTone?: 'default' | 'minimal';
 }
 
 let modalOpenCount = 0;
@@ -42,7 +44,12 @@ const Modal: React.FC<ModalProps> = ({
   ariaLabel,
   footer,
   variant = 'default',
+  footerTone = 'default',
 }) => {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const titleId = useId();
+
   useEffect(() => {
     if (!isOpen) return;
 
@@ -59,19 +66,88 @@ const Modal: React.FC<ModalProps> = ({
     };
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+
+    previousFocusRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+
+    const panel = panelRef.current;
+    if (!panel) return;
+
+    const getFocusable = () => Array.from(
+      panel.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    );
+
+    const focusInitial = window.setTimeout(() => {
+      const focusable = getFocusable();
+      (focusable[0] ?? panel).focus();
+    }, 0);
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+
+      const focusable = getFocusable();
+      if (focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+
+      if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      window.clearTimeout(focusInitial);
+      document.removeEventListener('keydown', onKeyDown);
+      previousFocusRef.current?.focus();
+    };
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const handleContentClick = (e: React.MouseEvent) => {
     e.stopPropagation();
   };
 
-  const panelClass = variant === 'sheet'
-    ? 'modal-panel modal-panel--sheet card-elevated'
-    : 'modal-panel card-elevated';
+  const panelClass = [
+    'modal-panel card-elevated',
+    variant === 'sheet' || variant === 'sheet-compact' || variant === 'sheet-compact-tall'
+      ? 'modal-panel--sheet'
+      : '',
+    variant === 'sheet-compact' ? 'modal-panel--sheet-compact' : '',
+    variant === 'sheet-compact-tall' ? 'modal-panel--sheet-compact modal-panel--sheet-compact-tall' : '',
+  ].filter(Boolean).join(' ');
 
-  const bodyClass = variant === 'sheet'
-    ? 'modal-body modal-body--sheet scrollbar-dark scroll-touch'
-    : 'modal-body scrollbar-dark scroll-touch';
+  const bodyClass = [
+    'modal-body scrollbar-dark scroll-touch',
+    variant === 'sheet' || variant === 'sheet-compact' || variant === 'sheet-compact-tall'
+      ? 'modal-body--sheet'
+      : '',
+    variant === 'sheet-compact' || variant === 'sheet-compact-tall' ? 'modal-body--sheet-compact' : '',
+  ].filter(Boolean).join(' ');
+
+  const footerClass = [
+    'modal-footer',
+    footerTone === 'minimal' ? 'modal-footer--minimal' : '',
+  ].filter(Boolean).join(' ');
 
   return createPortal(
     <div
@@ -80,11 +156,12 @@ const Modal: React.FC<ModalProps> = ({
       aria-modal="true"
       role="dialog"
       aria-label={!title ? ariaLabel : undefined}
+      aria-labelledby={title ? titleId : undefined}
     >
-      <div className={panelClass} onClick={handleContentClick}>
+      <div ref={panelRef} className={panelClass} onClick={handleContentClick} tabIndex={-1}>
         {title && (
           <div className="modal-header">
-            <h3 className="modal-header__title">{title}</h3>
+            <h3 id={titleId} className="modal-header__title">{title}</h3>
             <button
               onClick={onClose}
               className="modal-header__close"
@@ -99,7 +176,7 @@ const Modal: React.FC<ModalProps> = ({
 
         <div className={bodyClass}>{children}</div>
 
-        {footer && <div className="modal-footer">{footer}</div>}
+        {footer && <div className={footerClass}>{footer}</div>}
       </div>
     </div>,
     document.body,

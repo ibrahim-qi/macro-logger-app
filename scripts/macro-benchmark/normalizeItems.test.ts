@@ -1,64 +1,55 @@
-import { normalizeItems, sanitizeQuantity } from '../../supabase/functions/_shared/normalizeItems.ts';
+import { normalizeItems } from '../../supabase/functions/_shared/normalizeItems.ts';
 
-function assert(condition: boolean, message: string) {
+function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
-const cases: Array<{ label: string; input: Parameters<typeof sanitizeQuantity>[0]; expectQty: number; expectCals: number }> = [
+const [count, volume, invalid] = normalizeItems([
   {
-    label: 'gpt-4o milk misuse',
-    input: { food_name: 'Semi-skimmed milk', calories: 150, protein: 10, carbs: 14, fats: 5, quantity: 300 },
-    expectQty: 1,
-    expectCals: 150,
+    item_id: ' item_1 ',
+    food_name: '  cherry tomato ',
+    calories: 3,
+    protein: 0.1,
+    carbs: 0.5,
+    fats: 0,
+    quantity: 30,
+    unit: 'count',
+    evidence_status: 'uk_evidence',
   },
   {
-    label: 'gpt-4o oats misuse',
-    input: { food_name: 'Oats', calories: 150, protein: 5, carbs: 27, fats: 3, quantity: 40 },
-    expectQty: 1,
-    expectCals: 150,
+    item_id: 'item_2',
+    food_name: ' drink ',
+    calories: 100,
+    protein: 5,
+    carbs: 10,
+    fats: 3,
+    quantity: 1,
+    unit: 'serving',
+    reference_volume_ml: 250,
+    source_url: ' https://example.org.uk/drink ',
   },
   {
-    label: 'gpt-4o yogurt misuse',
-    input: { food_name: 'Greek yogurt', calories: 150, protein: 15, carbs: 6, fats: 0.5, quantity: 150 },
-    expectQty: 1,
-    expectCals: 150,
+    food_name: 'invalid numbers',
+    calories: Number.NaN,
+    protein: -1,
+    carbs: Number.POSITIVE_INFINITY,
+    fats: 2,
+    quantity: 0,
   },
-  {
-    label: 'valid two eggs',
-    input: { food_name: 'Scrambled Egg', calories: 70, protein: 6, carbs: 0.5, fats: 5, quantity: 2 },
-    expectQty: 2,
-    expectCals: 70,
-  },
-  {
-    label: 'valid twelve grapes',
-    input: { food_name: 'grapes', calories: 5, protein: 0.1, carbs: 1.2, fats: 0, quantity: 12 },
-    expectQty: 12,
-    expectCals: 5,
-  },
-  {
-    label: 'twenty scrambled eggs',
-    input: { food_name: 'Scrambled Egg', calories: 90, protein: 7, carbs: 1, fats: 7, quantity: 20 },
-    expectQty: 20,
-    expectCals: 90,
-  },
-  {
-    label: 'twenty-five almonds',
-    input: { food_name: 'Almonds', calories: 7, protein: 0.3, carbs: 0.2, fats: 0.6, quantity: 25 },
-    expectQty: 25,
-    expectCals: 7,
-  },
-];
-
-for (const c of cases) {
-  const out = sanitizeQuantity(c.input);
-  assert(out.quantity === c.expectQty, `${c.label}: expected qty ${c.expectQty}, got ${out.quantity}`);
-  assert(out.calories === c.expectCals, `${c.label}: expected cals ${c.expectCals}, got ${out.calories}`);
-}
-
-const batch = normalizeItems([
-  { food_name: 'Whey protein', calories: 120, protein: 24, carbs: 3, fats: 1.5, quantity: 1 },
-  { food_name: 'Semi-skimmed milk', calories: 150, protein: 10, carbs: 14, fats: 5, quantity: 300 },
 ]);
-assert(batch[1].quantity === 1 && batch[1].calories === 150, 'batch normalize failed');
 
-console.log(`All ${cases.length + 1} quantity normalization checks passed.`);
+assert(count.item_id === 'item_1', 'Item IDs should be trimmed');
+assert(count.food_name === 'cherry tomato', 'Food names should be trimmed');
+assert(count.quantity === 30, 'Normalizer must not reinterpret a valid count');
+assert(count.unit === 'count', 'Count unit must be preserved');
+assert(count.evidence_status === 'uk_evidence', 'Evidence metadata must be preserved');
+
+assert(volume.reference_volume_ml === 250, 'Millilitres must remain volume metadata');
+assert(volume.reference_weight_g === undefined, 'Millilitres must not become grams');
+assert(volume.source_url === 'https://example.org.uk/drink', 'Source URLs should be trimmed');
+
+assert(invalid.calories === 0 && invalid.protein === 0 && invalid.carbs === 0, 'Invalid macros must be bounded');
+assert(invalid.quantity === 1, 'Invalid quantity receives only a structural fallback');
+assert(invalid.unit === 'serving', 'Missing unit should normalize to serving');
+
+console.log('All boundary normalization checks passed.');

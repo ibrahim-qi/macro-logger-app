@@ -11,16 +11,14 @@ export interface ParseConfig {
   apiKey: string;
   baseUrl?: string;
   model: string;
+  interpretationModel?: string;
+  extractionModel?: string;
+  fallbackModel?: string;
   searchApiKey?: string;
-  /** Default true — set false to benchmark raw model quantity output */
-  sanitizeQuantity?: boolean;
 }
 
-export function postProcessParsedItems(
-  items: ParsedFoodItem[],
-  sanitizeQuantity = true,
-): ParsedItem[] {
-  return normalizeItems(items, { sanitizeQuantity });
+export function postProcessParsedItems(items: ParsedFoodItem[]): ParsedItem[] {
+  return normalizeItems(items);
 }
 
 export async function parseMealTextRaw(text: string, config: ParseConfig) {
@@ -30,6 +28,12 @@ export async function parseMealTextRaw(text: string, config: ParseConfig) {
       apiKey: config.apiKey,
       baseUrl: config.baseUrl ?? 'https://nano-gpt.com/api/v1',
       model: config.model,
+      interpretationModel: config.interpretationModel ?? process.env.NANOGPT_INTERPRETATION_MODEL ?? undefined,
+      extractionModel:
+        config.extractionModel ??
+        process.env.NANOGPT_EXTRACTION_MODEL ??
+        'google/gemini-3.5-flash-lite',
+      fallbackModel: config.fallbackModel ?? process.env.NANOGPT_FALLBACK_MODEL ?? undefined,
     },
     {},
     { searchApiKey: config.searchApiKey ?? process.env.SERPER_API_KEY },
@@ -39,5 +43,5 @@ export async function parseMealTextRaw(text: string, config: ParseConfig) {
 
 export async function parseMealText(text: string, config: ParseConfig): Promise<ParsedItem[]> {
   const result = await parseMealTextRaw(text, config);
-  return postProcessParsedItems(result.items, config.sanitizeQuantity !== false);
+  return postProcessParsedItems(result.items);
 }

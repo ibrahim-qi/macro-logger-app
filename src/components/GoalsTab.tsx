@@ -1,7 +1,7 @@
 import React from 'react';
 import LoadingState from './LoadingState';
 import DayMetrics from './DayMetrics';
-import { getTabLoadingLabel } from '../copy/experience';
+import { getTabLoadingLabel, getSetTargetsCta } from '../copy/experience';
 
 interface DailyTotals {
   calories: number;
@@ -49,7 +49,7 @@ const GoalsTab: React.FC<GoalsTabProps> = ({
         <h3 className="empty-panel__title">Set your targets</h3>
         <p className="empty-panel__body">Daily calorie and macro goals help Sahha track your progress calmly, without pressure.</p>
         <button type="button" onClick={onGoalsClick} className="btn-primary max-w-[14rem] mx-auto">
-          Set targets
+          {getSetTargetsCta()}
         </button>
       </div>
     );

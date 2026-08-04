@@ -1,16 +1,16 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 import { type ParsedFoodItem } from '../_shared/normalizeItems.ts';
-import { applySavedFoods } from '../_shared/applySavedFoods.ts';
 import { buildTranscriptionPrompt } from '../_shared/transcriptionPrompt.ts';
-import { assertUsableTranscript } from '../_shared/transcriptValidation.ts';
+import { assertTranscriptLooksLikeFood, assertUsableTranscript } from '../_shared/transcriptValidation.ts';
 import {
   assertValidAudioPayload,
   extensionForMime,
   normalizeAudioMimeType,
   parseProviderAudioError,
 } from '../_shared/audioValidation.ts';
-import { parseMealWithResearch } from '../_shared/mealParseFlow.ts';
+import { ParseRejectionError, rejectionPayload } from '../_shared/parseRejection.ts';
+import { parseMealWithResearch, type ParseTimings } from '../_shared/mealParseFlow.ts';
 import type { ParsePromptContext } from '../_shared/mealParsePrompt.ts';
 
 interface ParseMealResponse {
@@ -21,6 +21,7 @@ interface ParseMealResponse {
   searches_run?: number;
   parse_path?: 'fast' | 'research';
   research_available?: boolean;
+  timings?: ParseTimings;
 }
 
 type NanoGptConfig = ReturnType<typeof getNanoGptConfig>;
@@ -33,7 +34,7 @@ async function loadUserParseContext(
     .from('saved_foods')
     .select('food_name, calories, protein, carbs, fats')
     .eq('user_id', userId)
-    .order('food_name')
+    .order('created_at', { ascending: false })
     .limit(12);
 
   return {
@@ -57,7 +58,12 @@ function getNanoGptConfig() {
     apiKey,
     baseUrl: Deno.env.get('NANOGPT_BASE_URL') ?? 'https://nano-gpt.com/api/v1',
     sttModel: Deno.env.get('NANOGPT_STT_MODEL') ?? 'Whisper-Large-V3',
-    parseModel: Deno.env.get('NANOGPT_PARSE_MODEL') ?? 'google/gemini-3.5-flash',
+    parseModel: Deno.env.get('NANOGPT_PARSE_MODEL') ?? 'google/gemini-3.6-flash',
+    interpretationModel: Deno.env.get('NANOGPT_INTERPRETATION_MODEL') || undefined,
+    extractionModel:
+      Deno.env.get('NANOGPT_EXTRACTION_MODEL') ??
+      'google/gemini-3.5-flash-lite',
+    fallbackModel: Deno.env.get('NANOGPT_FALLBACK_MODEL') || undefined,
   };
 }
 
@@ -79,7 +85,7 @@ async function transcribeWithNanoGpt(
   formData.append('file', new Blob([binary], { type: normalizedMime }), `recording.${extension}`);
   formData.append('model', model);
   formData.append('language', 'en');
-  formData.append('response_format', 'json');
+  formData.append('response_format', 'verbose_json');
   formData.append('temperature', '0');
   if (prompt?.trim()) {
     formData.append('prompt', prompt.trim());
@@ -96,8 +102,24 @@ async function transcribeWithNanoGpt(
     throw new Error(parseProviderAudioError(response.status, detail));
   }
 
-  const payload = await response.json();
-  return assertUsableTranscript(String(payload?.text ?? ''), binary.byteLength);
+  const payload = await response.json() as {
+    text?: string;
+    segments?: Array<{ no_speech_prob?: number }>;
+  };
+
+  const segments = payload.segments ?? [];
+  if (segments.length > 0) {
+    const probs = segments
+      .map((segment) => segment.no_speech_prob)
+      .filter((value): value is number => typeof value === 'number');
+    if (probs.length > 0) {
+      const maxProb = Math.max(...probs);
+      const meanProb = probs.reduce((sum, value) => sum + value, 0) / probs.length;
+      console.log('[stt] no_speech_prob', { maxProb, meanProb, len: String(payload.text ?? '').length });
+    }
+  }
+
+  return assertUsableTranscript(String(payload.text ?? ''), binary.byteLength);
 }
 
 async function parseMealText(
@@ -106,21 +128,30 @@ async function parseMealText(
   context: ParsePromptContext,
   onProgress?: (stage: 'identifying' | 'looking_up' | 'estimating') => void,
 ): Promise<ParseMealResponse> {
+  const trimmed = assertTranscriptLooksLikeFood(mealText, 3);
+
   const parsed = await parseMealWithResearch(
-    mealText,
-    { apiKey: config.apiKey, baseUrl: config.baseUrl, model: config.parseModel },
+    trimmed,
+    {
+      apiKey: config.apiKey,
+      baseUrl: config.baseUrl,
+      model: config.parseModel,
+      interpretationModel: config.interpretationModel,
+      extractionModel: config.extractionModel,
+      fallbackModel: config.fallbackModel,
+    },
     context,
     { onProgress },
   );
 
-  const items = applySavedFoods(parsed.items, context.savedFoods ?? []);
   return {
-    items,
+    items: parsed.items,
     notes: parsed.notes,
     research_used: parsed.research_used,
     searches_run: parsed.searches_run,
     parse_path: parsed.parse_path,
     research_available: parsed.research_available,
+    timings: parsed.timings,
   };
 }
 
@@ -152,9 +183,14 @@ function jsonResponse(payload: unknown, status = 200) {
   });
 }
 
-function streamVoiceParse(
-  audioBase64: string,
-  mimeType: string,
+interface StreamParseInput {
+  audio?: string;
+  mimeType?: string;
+  text?: string;
+}
+
+function streamParse(
+  input: StreamParseInput,
   config: NanoGptConfig,
   context: ParsePromptContext,
 ): Response {
@@ -167,20 +203,34 @@ function streamVoiceParse(
       };
 
       try {
-        send({ event: 'progress', stage: 'transcribing' });
+        let transcript: string | undefined;
 
-        const savedNames = (context.savedFoods ?? []).map((food) => food.food_name);
-        const sttPrompt = buildTranscriptionPrompt(savedNames);
-        const transcript = await transcribeWithNanoGpt(
-          audioBase64,
-          mimeType,
-          config.apiKey,
-          config.baseUrl,
-          config.sttModel,
-          sttPrompt,
-        );
+        if (input.audio) {
+          send({ event: 'progress', stage: 'transcribing' });
 
-        send({ event: 'transcript', transcript });
+          const sttStartedAt = performance.now();
+          const audioBytes = Math.floor((input.audio.length * 3) / 4);
+          const savedNames = (context.savedFoods ?? []).map((food) => food.food_name);
+          const sttPrompt = buildTranscriptionPrompt(savedNames);
+          transcript = await transcribeWithNanoGpt(
+            input.audio,
+            input.mimeType ?? 'audio/webm',
+            config.apiKey,
+            config.baseUrl,
+            config.sttModel,
+            sttPrompt,
+          );
+          console.log('[stt] timing', {
+            ms: Math.round(performance.now() - sttStartedAt),
+            bytes: audioBytes,
+          });
+
+          send({ event: 'transcript', transcript });
+        } else if (input.text) {
+          transcript = input.text;
+        } else {
+          throw new Error('Meal description text or audio is required.');
+        }
 
         const result = await parseMealText(
           transcript,
@@ -190,6 +240,15 @@ function streamVoiceParse(
         );
         send({ event: 'result', ...result, transcript });
       } catch (error) {
+        if (error instanceof ParseRejectionError) {
+          send({
+            event: 'rejected',
+            reason: error.code,
+            transcript: error.transcript,
+            error: error.message,
+          });
+          return;
+        }
         const message = error instanceof Error ? error.message : 'Failed to parse meal';
         send({ event: 'error', error: message });
       } finally {
@@ -238,31 +297,8 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const action = body.action === 'transcribe' ? 'transcribe' : 'parse';
     const useStream = body.stream === true;
-    let mealText = typeof body.text === 'string' ? body.text.trim() : '';
-
-    if (action === 'transcribe') {
-      if (!body.audio || typeof body.audio !== 'string') {
-        return jsonResponse({ error: 'Audio is required for transcription' }, 400);
-      }
-
-      const context = await loadUserParseContext(supabase, user.id);
-      const mimeType = typeof body.mimeType === 'string' ? body.mimeType : 'audio/webm';
-      const sttPrompt = buildTranscriptionPrompt(
-        (context.savedFoods ?? []).map((food) => food.food_name),
-      );
-      const transcript = await transcribeWithNanoGpt(
-        body.audio,
-        mimeType,
-        config.apiKey,
-        config.baseUrl,
-        config.sttModel,
-        sttPrompt,
-      );
-
-      return jsonResponse({ transcript });
-    }
+    const mealText = typeof body.text === 'string' ? body.text.trim() : '';
 
     const context = await loadUserParseContext(supabase, user.id);
 
@@ -270,7 +306,7 @@ Deno.serve(async (req) => {
       const mimeType = typeof body.mimeType === 'string' ? body.mimeType : 'audio/webm';
 
       if (useStream) {
-        return streamVoiceParse(body.audio, mimeType, config, context);
+        return streamParse({ audio: body.audio, mimeType }, config, context);
       }
 
       const { result, transcript } = await parseVoiceMeal(body.audio, mimeType, config, context);
@@ -281,9 +317,16 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Meal description text is required' }, 400);
     }
 
+    if (useStream) {
+      return streamParse({ text: mealText }, config, context);
+    }
+
     const result = await parseMealText(mealText, config, context);
     return jsonResponse(result);
   } catch (error) {
+    if (error instanceof ParseRejectionError) {
+      return jsonResponse(rejectionPayload(error), 422);
+    }
     const message = error instanceof Error ? error.message : 'Failed to parse meal';
     return jsonResponse({ error: message }, 500);
   }

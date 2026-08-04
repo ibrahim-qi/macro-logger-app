@@ -8,7 +8,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BENCHMARK_CASES } from './dataset.ts';
 import { parseMealTextRaw } from './parseClient.ts';
-import { scoreCase, getItemBreakdown } from './metrics.ts';
+import { scoreCase } from './metrics.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const STAPLE_IDS = [
@@ -47,7 +47,7 @@ if (!apiKey) {
   process.exit(1);
 }
 
-const model = process.env.NANOGPT_PARSE_MODEL ?? 'google/gemini-3.5-flash';
+const model = process.env.NANOGPT_PARSE_MODEL ?? 'google/gemini-3.6-flash';
 const cases = BENCHMARK_CASES.filter((c) => STAPLE_IDS.includes(c.id));
 
 console.log(`Staple foods benchmark — ${cases.length} cases, model: ${model}\n`);
@@ -69,21 +69,33 @@ for (const testCase of cases) {
     console.log(`${pass} — ${Math.round(score.predicted.calories)} kcal (${score.calorieErrorPct.toFixed(1)}% err) — ${(elapsed / 1000).toFixed(1)}s [${path}]`);
     console.log(`       input: "${testCase.input}"`);
     console.log(`       expected ${Math.round(score.expected.calories)} kcal / ${score.expected.protein.toFixed(1)}g protein → got ${Math.round(score.predicted.calories)} kcal / ${score.predicted.protein.toFixed(1)}g protein`);
+    console.log(`       structure: ${score.predictedItemCount}/${score.expectedItemCount} items, ${score.matchedItemCount} matched, ${score.structuralScore.toFixed(1)}/100`);
 
     for (const item of result.items) {
       const conf = item.confidence ?? 'n/a';
       const assumption = item.portion_assumption?.trim();
-      const source = item.source_note?.trim();
-      console.log(`       • ${item.food_name}×${item.quantity} @ ${item.calories} kcal — confidence: ${conf}`);
+      const reference = item.reference_weight_g
+        ? `${item.reference_weight_g}g`
+        : item.reference_volume_ml
+          ? `${item.reference_volume_ml}ml`
+          : 'n/a';
+      console.log(`       • ${item.food_name}×${item.quantity} ${item.unit ?? '?'} @ ${item.calories} kcal — ref: ${reference}, confidence: ${conf}`);
       if (assumption) console.log(`         assumption: ${assumption}`);
-      if (source) console.log(`         source: ${source}`);
+      console.log(`         evidence: ${item.evidence_status ?? 'missing'} — ${item.source_title?.trim() || 'no source title'}`);
+      if (item.source_url?.trim()) console.log(`         source: ${item.source_url.trim()}`);
     }
 
-    const breakdown = getItemBreakdown(testCase, result.items);
-    const bad = breakdown.filter((r) => r.calorieErrorPct > 15);
+    const bad = score.itemBreakdown.filter((row) =>
+      !row.matched ||
+      row.calorieErrorPct > 15 ||
+      row.quantityCorrect === false ||
+      row.unitCorrect === false ||
+      row.referenceWeightCorrect === false ||
+      row.referenceVolumeCorrect === false
+    );
     if (bad.length) {
       for (const row of bad) {
-        console.log(`       ~ line error on "${row.expectedName}": expected ${Math.round(row.expectedLineCalories)} kcal line`);
+        console.log(`       ~ "${row.expectedName}": cal/protein/carbs/fats error ${row.calorieErrorPct.toFixed(1)}%/${row.proteinErrorPct.toFixed(1)}%/${row.carbsErrorPct.toFixed(1)}%/${row.fatsErrorPct.toFixed(1)}%`);
       }
     }
   } catch (err) {

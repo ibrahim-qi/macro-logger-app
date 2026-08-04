@@ -1,8 +1,8 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import DayMetrics from './DayMetrics';
-import { getGreeting, getTodayContextLine } from '../copy/experience';
-import { useUserExperience } from '../context/UserExperienceContext';
+import { getGreeting, getNoGoalsHeroMessage, getSetTargetsCta, getTodayContextLine } from '../copy/experience';
+import { useUserExperience } from '../context/userExperience';
 
 interface UserGoals {
   daily_calories_goal: number;
@@ -22,9 +22,10 @@ interface TodayHeroProps {
   dailyTotals: DailyTotals;
   userGoals: UserGoals | null;
   streak: number;
+  onSetTargets?: () => void;
 }
 
-const TodayHero: React.FC<TodayHeroProps> = ({ dailyTotals, userGoals, streak }) => {
+const TodayHero: React.FC<TodayHeroProps> = ({ dailyTotals, userGoals, streak, onSetTargets }) => {
   const { experience } = useUserExperience();
   const contextLine = getTodayContextLine(experience);
 
@@ -35,7 +36,14 @@ const TodayHero: React.FC<TodayHeroProps> = ({ dailyTotals, userGoals, streak })
       {userGoals ? (
         <DayMetrics dailyTotals={dailyTotals} userGoals={userGoals} variant="today" />
       ) : (
-        <p className="today-summary__empty">Set daily targets to track your nutrition.</p>
+        <div className="today-summary__empty-block">
+          <p className="today-summary__empty">{getNoGoalsHeroMessage()}</p>
+          {onSetTargets && (
+            <button type="button" onClick={onSetTargets} className="btn-primary today-summary__targets-btn">
+              {getSetTargetsCta()}
+            </button>
+          )}
+        </div>
       )}
 
       {contextLine && (

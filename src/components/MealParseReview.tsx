@@ -8,11 +8,18 @@ import type { ParsedFoodItem, ParseMealResponse, ParseProgressState } from '../t
 import type { DayContext } from '../hooks/useDayContext';
 import { sumItemMacros } from '../utils/mealTotals';
 import { hapticLight, hapticSuccess } from '../utils/haptics';
-import { getReviewHint } from '../copy/experience';
-import { useUserExperience } from '../context/UserExperienceContext';
+import { getReviewHint, getResearchTrustLine, getParseErrorTitle, getRejectionTitle, isLongParseTranscript } from '../copy/experience';
+import type { ParseErrorKind, ParseRejectionCode } from '../utils/parseRejection.ts';
+import { useUserExperience } from '../context/userExperience';
 import { upsertSavedFoods } from '../utils/savedFoods';
 import { localDayBounds, createTimestampForDate } from '../utils/localDate';
 import { useCountUp } from '../hooks/useCountUp';
+import {
+  extractReferenceAmount,
+  formatServingLabel,
+  servingWeightPresets,
+  scaleItemByReferenceAmount,
+} from '../utils/servingWeight';
 import MealParseLoading from './MealParseLoading';
 
 type ParseMode = 'voice' | 'text';
@@ -25,12 +32,15 @@ interface MealParseReviewProps {
   transcript?: string | null;
   parseProgress?: ParseProgressState | null;
   parseError?: string | null;
+  parseErrorKind?: ParseErrorKind;
+  parseRejectionReason?: ParseRejectionCode;
   result: ParseMealResponse | null;
   selectedDate: Date;
   dayContext?: DayContext | null;
   onClose: () => void;
   onLogged: () => void;
   onRetry?: (text: string) => void;
+  onRetryVoice?: () => void;
 }
 
 interface UserGoals {
@@ -42,6 +52,7 @@ interface UserGoals {
 
 const QUANTITY_STEP = 0.5;
 const QUANTITY_MIN = 0.5;
+const LOADER_EXIT_MS = 380;
 
 type ReviewItem = ParsedFoodItem & { id: string; from_saved_food?: boolean };
 
@@ -49,25 +60,59 @@ function toReviewItems(items: ParsedFoodItem[]): ReviewItem[] {
   return items.map((item) => ({ ...item, id: crypto.randomUUID() }));
 }
 
+function shouldAutoVerify(item: ParsedFoodItem): boolean {
+  return item.confidence === 'high'
+    || item.evidence_status === 'uk_evidence'
+    || item.evidence_status === 'user_saved';
+}
+
+function requiresManualReview(item: ParsedFoodItem): boolean {
+  if (item.evidence_status === 'unavailable') return true;
+  return item.calories === 0 && item.protein === 0 && item.carbs === 0 && item.fats === 0;
+}
+
+function userAdjustedProvenance(): Pick<ParsedFoodItem, 'from_saved_food' | 'evidence_status' | 'source_note' | 'source_title' | 'source_url'> {
+  return {
+    from_saved_food: false,
+    evidence_status: 'ai_estimate',
+    source_note: 'Adjusted by user',
+    source_title: 'Adjusted by user',
+    source_url: undefined,
+  };
+}
+
 function parseNumber(value: string, fallback: number): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function provenanceLabel(item: ParsedFoodItem): string | null {
+  switch (item.evidence_status) {
+    case 'uk_evidence': return item.source_title ? `UK evidence · ${item.source_title}` : 'UK evidence';
+    case 'user_saved': return 'Your saved food';
+    case 'ai_estimate': return 'AI estimate';
+    case 'unavailable': return 'Nutrition unavailable';
+    default: return null;
+  }
 }
 
 const MealParseReview: React.FC<MealParseReviewProps> = ({
   session,
   isOpen,
   loading = false,
-  parseMode: _parseMode = 'voice',
+  parseMode = 'voice',
   transcript,
-  parseProgress: _parseProgress,
+  parseProgress,
   parseError,
+  parseErrorKind = 'failure',
+  parseRejectionReason,
   result,
   selectedDate,
   dayContext,
   onClose,
   onLogged,
   onRetry,
+  onRetryVoice,
 }) => {
   const navigate = useNavigate();
   const { experience, timezone } = useUserExperience();
@@ -77,16 +122,36 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
   const [verified, setVerified] = useState<Set<string>>(new Set());
   const [rememberIds, setRememberIds] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [servingEditId, setServingEditId] = useState<string | null>(null);
+  const [customGrams, setCustomGrams] = useState('');
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [userGoals, setUserGoals] = useState<UserGoals | null>(null);
   const [dayCalories, setDayCalories] = useState(0);
-  const [itemsRevealed, setItemsRevealed] = useState(false);
   const [loadingVisible, setLoadingVisible] = useState(loading);
   const [contentReady, setContentReady] = useState(!loading && Boolean(result));
   const [retryDraft, setRetryDraft] = useState('');
+  const [userTouched, setUserTouched] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const wasLoadingRef = useRef(false);
   const lastTranscriptRef = useRef<string | null>(null);
+
+  const scrollToRow = (id: string) => {
+    document.getElementById(`meal-review-row-${id}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  };
+
+  const pulseRow = (id: string) => {
+    const row = document.getElementById(`meal-review-row-${id}`);
+    if (!row) return;
+    row.classList.add('meal-review-row--pulse');
+    window.setTimeout(() => row.classList.remove('meal-review-row--pulse'), 650);
+  };
+
+  const scrollToFirstUnverified = () => {
+    const first = items.find((item) => !verified.has(item.id));
+    if (!first) return;
+    scrollToRow(first.id);
+    pulseRow(first.id);
+  };
 
   useEffect(() => {
     if (parseError) {
@@ -103,8 +168,10 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
 
     if (result) {
       setContentReady(true);
-      setLoadingVisible(false);
-      return;
+      const timer = window.setTimeout(() => {
+        setLoadingVisible(false);
+      }, LOADER_EXIT_MS);
+      return () => window.clearTimeout(timer);
     }
 
     setLoadingVisible(false);
@@ -113,15 +180,14 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
 
   useEffect(() => {
     if (!result) return;
-    setItems(toReviewItems(result.items ?? []));
+    const reviewItems = toReviewItems(result.items ?? []);
+    setItems(reviewItems);
     setError(null);
-    setVerified(new Set());
+    setVerified(new Set(reviewItems.filter(shouldAutoVerify).map((item) => item.id)));
     setRememberIds(new Set());
     setEditingId(null);
     setOpenMenuId(null);
-    setItemsRevealed(false);
-    const revealTimer = window.setTimeout(() => setItemsRevealed(true), 0);
-    return () => window.clearTimeout(revealTimer);
+    setUserTouched(false);
   }, [result]);
 
   useEffect(() => {
@@ -225,31 +291,64 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
   };
 
   const updateItem = (id: string, patch: Partial<ParsedFoodItem>) => {
+    setUserTouched(true);
     markUnverified(id);
     setItems((prev) =>
       prev.map((item) =>
-        item.id === id ? { ...item, ...patch, from_saved_food: false } : item,
+        item.id === id
+          ? {
+              ...item,
+              ...patch,
+              ...userAdjustedProvenance(),
+            }
+          : item,
       ),
     );
   };
 
   const adjustQuantity = (id: string, delta: number) => {
     hapticLight();
+    setUserTouched(true);
     markUnverified(id);
     setItems((prev) =>
       prev.map((item) => {
         if (item.id !== id) return item;
         const next = Math.max(QUANTITY_MIN, Math.round((item.quantity + delta) * 2) / 2);
-        return { ...item, quantity: next, from_saved_food: false };
+        return { ...item, quantity: next, ...userAdjustedProvenance() };
       }),
     );
   };
 
+  const openServingEdit = (item: ReviewItem) => {
+    hapticLight();
+    setServingEditId(item.id);
+    setCustomGrams(String(extractReferenceAmount(item)?.value ?? ''));
+    setEditingId(null);
+    setOpenMenuId(null);
+  };
+
+  const applyServingWeight = (id: string, amount: number) => {
+    if (!Number.isFinite(amount) || amount < 10 || amount > 2000) return;
+    hapticLight();
+    setUserTouched(true);
+    markUnverified(id);
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        return { ...scaleItemByReferenceAmount(item, Math.round(amount)), id: item.id };
+      }),
+    );
+    setCustomGrams(String(Math.round(amount)));
+  };
+
   const toggleVerified = (id: string) => {
     hapticLight();
+    setUserTouched(true);
+    setServingEditId((current) => (current === id ? null : current));
     setVerified((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) {
+      const wasVerified = next.has(id);
+      if (wasVerified) {
         next.delete(id);
         setRememberIds((remember) => {
           if (!remember.has(id)) return remember;
@@ -259,9 +358,22 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
         });
       } else {
         next.add(id);
+        const nextUnverifiedId = items.find((item) => item.id !== id && !next.has(item.id))?.id;
+        if (nextUnverifiedId) {
+          window.setTimeout(() => scrollToRow(nextUnverifiedId), 0);
+        }
       }
       return next;
     });
+  };
+
+  const handleRowMainActivate = (itemId: string, event?: React.MouseEvent | React.KeyboardEvent) => {
+    if (event && 'target' in event) {
+      const target = event.target as HTMLElement;
+      if (target.closest('button, input, textarea, a, [role="menu"]')) return;
+    }
+    if (editingId === itemId) return;
+    toggleVerified(itemId);
   };
 
   const toggleRemember = (id: string) => {
@@ -274,7 +386,20 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
     });
   };
 
+  const verifyAllRemaining = () => {
+    hapticSuccess();
+    setUserTouched(true);
+    setVerified((prev) => {
+      const next = new Set(prev);
+      items.forEach((item) => {
+        if (!requiresManualReview(item)) next.add(item.id);
+      });
+      return next;
+    });
+  };
+
   const removeItem = (id: string) => {
+    setUserTouched(true);
     setItems((prev) => prev.filter((item) => item.id !== id));
     setVerified((prev) => {
       const next = new Set(prev);
@@ -341,52 +466,107 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
 
   const displayTranscript = transcript ?? result?.transcript ?? null;
   const showParseError = Boolean(parseError) && !loadingVisible;
-  const canRetryParse = Boolean(retryDraft.trim() && onRetry);
+  const loadingSheetVariant = loadingVisible && isLongParseTranscript(displayTranscript)
+    ? 'sheet-compact-tall'
+    : 'sheet-compact';
+  const isRejection = parseErrorKind === 'rejection';
+  const canEditRetryTranscript = isRejection
+    ? parseRejectionReason === 'no_meal_detected' && Boolean((retryDraft.trim() || transcript?.trim()) && onRetry)
+    : Boolean(retryDraft.trim() && onRetry);
 
   if (!isOpen) return null;
 
   const handleDismiss = () => {
-    if (loadingVisible) return;
+    if (loadingVisible) {
+      onClose();
+      return;
+    }
+    if (
+      contentReady
+      && result
+      && userTouched
+      && !window.confirm('Discard this meal review?')
+    ) {
+      return;
+    }
     onClose();
   };
 
   const footer = showParseError ? (
-    <div className="flex gap-3">
-      <button type="button" onClick={onClose} className={`${canRetryParse ? 'flex-1' : 'w-full'} btn-ghost py-3`}>
-        Close
+    isRejection && parseRejectionReason === 'nothing_eaten' ? (
+      <button type="button" onClick={handleDismiss} className="w-full btn-primary py-3">
+        Done
       </button>
-      {canRetryParse && (
-        <button
-          type="button"
-          onClick={() => onRetry?.(retryDraft)}
-          disabled={loading}
-          className="flex-1 btn-primary"
-        >
-          {loading ? 'Retrying…' : 'Retry parse'}
+    ) : isRejection && parseRejectionReason === 'no_speech' ? (
+      <div className="flex gap-3">
+        <button type="button" onClick={handleDismiss} className="flex-1 btn-ghost py-3">
+          Close
         </button>
-      )}
-    </div>
+        <button type="button" onClick={() => onRetryVoice?.()} className="flex-1 btn-primary py-3">
+          Try again
+        </button>
+      </div>
+    ) : (
+      <div className="flex gap-3">
+        <button type="button" onClick={handleDismiss} className={`${canEditRetryTranscript ? 'flex-1' : 'w-full'} btn-ghost py-3`}>
+          Close
+        </button>
+        {canEditRetryTranscript && (
+          <button
+            type="button"
+            onClick={() => onRetry?.(retryDraft)}
+            disabled={loading}
+            className="flex-1 btn-primary"
+          >
+            {loading ? 'Retrying…' : 'Retry parse'}
+          </button>
+        )}
+      </div>
+    )
   ) : loadingVisible ? (
-    <button type="button" onClick={onClose} className="w-full btn-ghost py-3">
+    <button type="button" onClick={handleDismiss} className="parse-sheet-cancel">
       Cancel
     </button>
   ) : (
-    <div className="flex gap-3">
-      <button type="button" onClick={onClose} className="flex-1 btn-ghost py-3">
-        Cancel
-      </button>
-      <button
-        type="button"
-        onClick={handleLogAll}
-        disabled={logging || items.length === 0 || !allVerified}
-        className="flex-1 btn-primary"
-      >
-        {logging
-          ? 'Saving…'
-          : !allVerified
-            ? `Verify ${unverifiedCount} item${unverifiedCount === 1 ? '' : 's'}`
-            : `Log ${items.length} item${items.length === 1 ? '' : 's'}`}
-      </button>
+    <div className="meal-review-footer">
+      {!allVerified && items.length > 0 && (
+        <div className="meal-review-footer__summary" aria-live="polite">
+          <span className="meal-review-footer__total tabular-nums">{Math.round(totals.calories)} cal</span>
+          <span className="meal-review-footer__meta">
+            {unverifiedCount > 0
+              ? `${unverifiedCount} to confirm`
+              : 'Ready to log'}
+          </span>
+        </div>
+      )}
+      <div className="meal-review-footer__actions">
+        {!allVerified && unverifiedCount > 1 && (
+          <button
+            type="button"
+            onClick={verifyAllRemaining}
+            className="meal-review-footer__verify-all"
+          >
+            Verify all
+          </button>
+        )}
+        <div className="flex gap-3">
+          <button type="button" onClick={handleDismiss} className="flex-1 btn-ghost py-3">
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={allVerified ? handleLogAll : scrollToFirstUnverified}
+            disabled={logging || items.length === 0}
+            className="flex-1 btn-primary"
+          >
+            {logging
+              ? 'Saving…'
+              : !allVerified
+                ? `Verify ${unverifiedCount} item${unverifiedCount === 1 ? '' : 's'}`
+                : `Log ${items.length} item${items.length === 1 ? '' : 's'}`}
+          </button>
+        </div>
+      </div>
     </div>
   );
 
@@ -395,31 +575,29 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
       isOpen={isOpen}
       onClose={handleDismiss}
       ariaLabel={loadingVisible ? 'Working on your meal' : undefined}
+      variant={loadingVisible ? loadingSheetVariant : 'sheet'}
+      footerTone={loadingVisible ? 'minimal' : 'default'}
       title={
         loadingVisible
           ? undefined
           : showParseError
-            ? 'Could not parse meal'
+            ? (isRejection ? getRejectionTitle() : getParseErrorTitle())
             : 'Verify your meal'
       }
       footer={footer}
-      variant="sheet"
     >
-      <div className={`meal-review-stage ${!contentReady ? 'meal-review-stage--busy' : ''}`}>
+      <div className={`meal-review-stage ${loadingVisible ? 'meal-review-stage--loading' : ''} ${contentReady ? 'meal-review-stage--ready' : ''}`}>
         {loadingVisible && (
-          <div
-            className={`meal-review-stage__loading ${contentReady ? 'meal-review-stage__loading--exit' : ''}`}
-            aria-hidden={contentReady}
-          >
-            <MealParseLoading
-              transcript={displayTranscript}
-              exiting={contentReady}
-            />
-          </div>
+          <MealParseLoading
+            transcript={displayTranscript}
+            stage={parseProgress?.current ?? null}
+            mode={parseMode}
+            exiting={contentReady && !loading}
+          />
         )}
 
-        {contentReady && result && (
-          <div className={`meal-review-stage__content ${loadingVisible ? 'meal-review-stage__content--resolve' : ''}`}>
+        {contentReady && result && !loadingVisible && (
+          <div className="meal-review-stage__content">
           <div className="meal-review-hero meal-review-hero--reveal">
             <p className="meal-review-hero__calories tabular-nums">{animatedCalories}</p>
             <p className="meal-review-hero__label">calories</p>
@@ -454,6 +632,12 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
                 <span className="section-label">You said</span>
                 <span className="meal-review-context__text">{displayTranscript}</span>
               </p>
+              {result.research_used && (
+                <p className="meal-review-context__trust section-label">{getResearchTrustLine()}</p>
+              )}
+              {result.notes && (
+                <p className="meal-review-context__notes">{result.notes}</p>
+              )}
             </div>
           )}
 
@@ -472,25 +656,136 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
                 const isEditing = editingId === item.id;
                 const isMenuOpen = openMenuId === item.id;
                 const isUncertain = !isVerified && item.confidence === 'low';
+                const referenceAmount = extractReferenceAmount(item);
+                const servingLabel = formatServingLabel(item);
+                const provenance = provenanceLabel(item);
+                const canAdjustWeight = !isVerified && !isEditing && !item.from_saved_food && Boolean(referenceAmount);
+                const isServingEditOpen = servingEditId === item.id;
+                const showServing = !isVerified && !isEditing && Boolean(
+                  servingLabel || referenceAmount || item.confidence === 'medium' || item.confidence === 'low',
+                );
 
                 return (
                   <li
                     key={item.id}
                     id={`meal-review-row-${item.id}`}
-                    className={`meal-review-row ${itemsRevealed ? 'meal-review-row--reveal' : ''} ${isVerified ? 'meal-review-row--verified' : 'meal-review-row--pending'}${isUncertain ? ' meal-review-row--uncertain' : ''}`}
-                    style={{ animationDelay: `${index * 24}ms` }}
+                    className={`meal-review-row meal-review-row--reveal ${isVerified ? 'meal-review-row--verified' : 'meal-review-row--pending'}${isUncertain ? ' meal-review-row--uncertain' : ''}`}
+                    style={{ animationDelay: `${Math.min(index, 8) * 40}ms` }}
                   >
-                    <div className="meal-review-row__main">
+                    <div
+                      className={`meal-review-row__main ${!isEditing ? 'meal-review-row__main--tappable' : ''}`}
+                      tabIndex={!isEditing ? 0 : undefined}
+                      onClick={(event) => handleRowMainActivate(item.id, event)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          handleRowMainActivate(item.id, event);
+                        }
+                      }}
+                      aria-label={!isVerified ? `Verify ${item.food_name}` : undefined}
+                    >
                       <div className="meal-review-row__info">
-                        <p className="meal-review-row__name capitalize">{item.food_name}</p>
+                        <div className="meal-review-row__title">
+                          <p className="meal-review-row__name capitalize">{item.food_name}</p>
+                          {showServing && (
+                            canAdjustWeight ? (
+                              <button
+                                type="button"
+                                className={`meal-review-row__serving meal-review-row__serving--button ${isServingEditOpen ? 'meal-review-row__serving--open' : ''}`}
+                                onClick={() => {
+                                  if (isServingEditOpen) {
+                                    setServingEditId(null);
+                                    return;
+                                  }
+                                  openServingEdit(item);
+                                }}
+                                aria-expanded={isServingEditOpen}
+                              >
+                                {servingLabel ?? `${referenceAmount?.value}${referenceAmount?.unit}`}
+                              </button>
+                            ) : (
+                              <span className="meal-review-row__serving meal-review-row__serving--vague">
+                                {servingLabel ?? 'Estimated portion'}
+                              </span>
+                            )
+                          )}
+                        </div>
+                        {isServingEditOpen && referenceAmount && (
+                          <div className="meal-review-serving">
+                            <p className="meal-review-serving__label">
+                              {qty > 1 ? 'Adjust serving (per item)' : 'Adjust serving'}
+                            </p>
+                            <div className="meal-review-serving__presets">
+                              {servingWeightPresets(referenceAmount.value).map((amount) => (
+                                <button
+                                  key={amount}
+                                  type="button"
+                                  className={`meal-review-serving__preset ${amount === referenceAmount.value ? 'meal-review-serving__preset--active' : ''}`}
+                                  onClick={() => applyServingWeight(item.id, amount)}
+                                >
+                                  {amount}{referenceAmount.unit}
+                                </button>
+                              ))}
+                            </div>
+                            <div className="meal-review-serving__custom">
+                              <input
+                                type="number"
+                                min={10}
+                                max={2000}
+                                inputMode="numeric"
+                                value={customGrams}
+                                onChange={(e) => setCustomGrams(e.target.value)}
+                                className="input-premium meal-review-serving__input tabular-nums"
+                                aria-label={`Custom ${referenceAmount.unit === 'ml' ? 'millilitres' : 'grams'}`}
+                              />
+                              <button
+                                type="button"
+                                className="meal-review-serving__apply"
+                                onClick={() => applyServingWeight(item.id, Number(customGrams))}
+                              >
+                                Apply
+                              </button>
+                            </div>
+                            {item.portion_assumption && (
+                              <p className="meal-review-serving__assumption">{item.portion_assumption}</p>
+                            )}
+                            {item.source_note && (
+                              <p className="meal-review-row__source">{item.source_note}</p>
+                            )}
+                          </div>
+                        )}
                         {item.from_saved_food && !isEditing && (
                           <span className="meal-review-row__saved-badge">From your saved foods</span>
                         )}
-                        <MacroLine
-                          protein={item.protein * qty}
-                          carbs={item.carbs * qty}
-                          fats={item.fats * qty}
-                        />
+                        {!isEditing && provenance && !item.from_saved_food && (
+                          <div className="meal-review-row__provenance">
+                            {item.source_url ? (
+                              <a
+                                href={item.source_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="meal-review-row__source"
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                {provenance}
+                              </a>
+                            ) : (
+                              <span className="meal-review-row__source">{provenance}</span>
+                            )}
+                            <MacroLine
+                              protein={item.protein * qty}
+                              carbs={item.carbs * qty}
+                              fats={item.fats * qty}
+                            />
+                          </div>
+                        )}
+                        {(!provenance || item.from_saved_food) && !isEditing && (
+                          <MacroLine
+                            protein={item.protein * qty}
+                            carbs={item.carbs * qty}
+                            fats={item.fats * qty}
+                          />
+                        )}
                       </div>
                       <span className="meal-review-row__calories tabular-nums">{itemCalories} cal</span>
                     </div>
@@ -590,6 +885,7 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
                           type="button"
                           onClick={() => {
                             setEditingId(isEditing ? null : item.id);
+                            setServingEditId(null);
                             setOpenMenuId(null);
                           }}
                           className="meal-review-tool-btn"
@@ -678,8 +974,10 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
 
       {!loadingVisible && showParseError && (
         <div className="meal-review-retry">
-          <p className="meal-review-retry__error">{parseError}</p>
-          {canRetryParse ? (
+          <p className={`meal-review-retry__error${isRejection ? ' meal-review-retry__error--calm' : ''}`}>
+            {parseError}
+          </p>
+          {canEditRetryTranscript ? (
             <label className="meal-review-retry__field">
               <span className="meal-review-retry__label">Edit what you said and retry</span>
               <textarea
@@ -690,7 +988,9 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
               />
             </label>
           ) : (
-            <p className="meal-review-retry__hint">Try the mic again or type your meal below.</p>
+            !isRejection && (
+              <p className="meal-review-retry__hint">Try the mic again or type your meal below.</p>
+            )
           )}
         </div>
       )}

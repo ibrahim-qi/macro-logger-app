@@ -122,7 +122,9 @@ After deploying, add your Vercel site URL to Supabase Auth redirect URLs (Authen
 
 The Add page parses natural-language meal descriptions via the `parse-meal` Edge Function, powered by [NanoGPT](https://nano-gpt.com).
 
-**Flow:** speak or type → NanoGPT Whisper (`Whisper-Large-V3`) → NanoGPT Gemini Flash (`google/gemini-3.5-flash`) → review → save.
+**Evidence-first flow:** speak or type → Whisper STT → AI item/portion interpretation → item-bound Serper UK research → AI evidence extraction → deterministic portion scaling → review → save. If suitable evidence is unavailable, Sahha returns a clearly labelled AI estimate instead of pretending it was web-verified.
+
+Runtime prompts contain no hard-coded food portions or nutrition values. The AI infers the most likely amount from the user's wording; the review sheet exposes that assumption before saving.
 
 ### 1. Create a NanoGPT account
 
@@ -140,27 +142,44 @@ In **Supabase Dashboard → Project Settings → Edge Functions → Secrets** (p
 |---|---|---|
 | `NANOGPT_API_KEY` | Your NanoGPT API key | Yes |
 | `NANOGPT_STT_MODEL` | `Whisper-Large-V3` | Optional (default) |
-| `NANOGPT_PARSE_MODEL` | `google/gemini-3.5-flash` | Optional (default) |
-| `SERPER_API_KEY` | [Serper.dev](https://serper.dev) API key for UK nutrition web lookup on branded/ambiguous meals | Recommended for production |
+| `NANOGPT_PARSE_MODEL` | `google/gemini-3.6-flash` | Main interpretation and fallback model |
+| `NANOGPT_INTERPRETATION_MODEL` | Optional model override | Optional |
+| `NANOGPT_EXTRACTION_MODEL` | `google/gemini-3.5-flash-lite` | Fast structured evidence extraction |
+| `NANOGPT_FALLBACK_MODEL` | Optional model override | Optional |
+| `SERPER_API_KEY` | [Serper.dev](https://serper.dev) key for per-item UK nutrition evidence | Recommended |
+| `SERPER_TIMEOUT_MS` | `8000` | Optional |
+| `SERPER_CONCURRENCY` | `4` | Optional |
+| `PARSE_MAX_SEARCH_ITEMS` | `8` | Optional per-meal safety cap |
+| `PARSE_TIMING` | `1` to log stage timings | Optional |
 
 Or via CLI (after linking the project):
 
 ```bash
 supabase secrets set NANOGPT_API_KEY=your_nanogpt_api_key
 supabase secrets set NANOGPT_STT_MODEL=Whisper-Large-V3
-supabase secrets set NANOGPT_PARSE_MODEL=google/gemini-3.5-flash
+supabase secrets set NANOGPT_PARSE_MODEL=google/gemini-3.6-flash
+supabase secrets set NANOGPT_EXTRACTION_MODEL=google/gemini-3.5-flash-lite
 supabase secrets set SERPER_API_KEY=your_serper_api_key
 ```
 
-**Research path:** compound meals, UK brands, and ambiguous items (yogurt fat %, milk type, raw vs cooked meat) run interpret → Serper (max 2 UK queries) → estimate. Simple explicit meals use a single fast LLM call. Without `SERPER_API_KEY`, the research path still runs but estimates come from the model only — the review screen will note that UK web lookup is unavailable.
+Gemini 3.6 Flash handles portion judgement and evidence-free fallback. Complete, explicit Serper snippets are parsed deterministically; only ambiguous evidence goes to Gemini 3.5 Flash Lite for structured extraction. Every non-saved item is searched independently, and stable item IDs prevent evidence from one food being applied to another.
 
-**Optional upgrades** (change secrets only, no code deploy needed):
+### Benchmarks (local, needs `.env.local` keys)
 
-| Use case | STT model | Parse model |
-|---|---|---|
-| Default (recommended) | `Whisper-Large-V3` | `google/gemini-3.5-flash` |
-| Better transcription | `gpt-4o-mini-transcribe-2025-12-15` | same |
-| Better macro estimates | same | `google/gemini-3.6-flash` |
+Offline parser checks:
+
+```bash
+npm run test:parsing
+```
+
+Live accuracy runs:
+
+```bash
+npm run benchmark:macros
+npm run benchmark:staples
+npm run benchmark:chains
+npm run guardrails:intent
+```
 
 ### 3. Deploy the Edge Function
 
@@ -176,7 +195,7 @@ supabase functions deploy parse-meal
 2. On the **Add** page, tap the mic or type a meal.
 3. Review parsed items → **Log**.
 
-Typical cost is well under **$0.001 per meal log**.
+Cost and latency vary with meal item count because evidence research is performed per item.
 
 ### Voice on iPhone PWA
 

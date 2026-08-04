@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { SahhaMark } from './SahhaBrand';
 import MacroStatGrid from './MacroStatGrid';
 import { getEmptyStateBody, getEmptyStateCta, getEmptyStateTitle } from '../copy/experience';
-import { useUserExperience } from '../context/UserExperienceContext';
+import { useUserExperience } from '../context/userExperience';
 import { getMealPeriod } from '../utils/mealTotals';
 
 interface FoodEntry {

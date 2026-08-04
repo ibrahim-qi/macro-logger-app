@@ -1,7 +1,5 @@
 import React, {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useState,
@@ -18,19 +16,7 @@ import { todayDayBounds, dateKeyInTimezone } from '../utils/localDate';
 import { ensureProfile, fetchProfile, syncProfileTimezone, updateDisplayName } from '../utils/profile';
 import { resolveUserTimezone } from '../utils/userTimezone';
 import { supabase } from '../supabaseClient';
-
-interface UserExperienceValue {
-  profile: UserProfile | null;
-  timezone: string;
-  experience: ExperienceContext;
-  loading: boolean;
-  needsName: boolean;
-  needsGoals: boolean;
-  needsMicIntro: boolean;
-  refresh: () => Promise<void>;
-  setDisplayName: (name: string) => Promise<void>;
-  completeMicIntro: () => void;
-}
+import { UserExperienceContext } from './userExperience';
 
 const MIC_INTRO_KEY = 'sahha_mic_intro';
 
@@ -50,8 +36,6 @@ const defaultExperience: ExperienceContext = {
   hasLoggedToday: false,
   weeklyDaysLogged: null,
 };
-
-const UserExperienceContext = createContext<UserExperienceValue | null>(null);
 
 async function fetchGoals(userId: string): Promise<UserGoals | null> {
   const { data, error } = await supabase
@@ -249,12 +233,4 @@ export function UserExperienceProvider({
       {children}
     </UserExperienceContext.Provider>
   );
-}
-
-export function useUserExperience() {
-  const ctx = useContext(UserExperienceContext);
-  if (!ctx) {
-    throw new Error('useUserExperience must be used within UserExperienceProvider');
-  }
-  return ctx;
 }

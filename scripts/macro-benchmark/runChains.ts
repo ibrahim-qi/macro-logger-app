@@ -8,7 +8,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BENCHMARK_CASES } from './dataset.ts';
 import { parseMealTextRaw } from './parseClient.ts';
-import { scoreCase, getItemBreakdown } from './metrics.ts';
+import { scoreCase } from './metrics.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CHAIN_IDS = ['greggs-sausage-roll', 'costa-large-latte', 'pret-ham-cheese', 'big-mac'];
@@ -41,7 +41,7 @@ if (!apiKey) {
   process.exit(1);
 }
 
-const model = process.env.NANOGPT_PARSE_MODEL ?? 'google/gemini-3.5-flash';
+const model = process.env.NANOGPT_PARSE_MODEL ?? 'google/gemini-3.6-flash';
 const cases = BENCHMARK_CASES.filter((c) => CHAIN_IDS.includes(c.id));
 
 console.log(`UK chain benchmark — ${cases.length} cases, model: ${model}\n`);
@@ -62,18 +62,35 @@ for (const testCase of cases) {
     const pass = score.withinBand ? 'PASS' : 'FAIL';
     const path = result.parse_path ?? 'research';
     console.log(`${pass} — ${Math.round(score.predicted.calories)} kcal (${score.calorieErrorPct.toFixed(1)}% err) — ${(elapsed / 1000).toFixed(1)}s [${path}]`);
+    console.log(`       structure: ${score.predictedItemCount}/${score.expectedItemCount} items, ${score.structuralScore.toFixed(1)}/100`);
 
     for (const item of items) {
-      const src = (item as { source_note?: string }).source_note;
-      const conf = (item as { confidence?: string }).confidence;
-      if (src || conf) console.log(`       ${item.food_name}: ${item.calories} kcal, confidence ${conf}, source: ${src || 'n/a'}`);
+      const reference = item.reference_weight_g
+        ? `${item.reference_weight_g}g`
+        : item.reference_volume_ml
+          ? `${item.reference_volume_ml}ml`
+          : 'n/a';
+      console.log(
+        `       ${item.food_name}: ${item.calories} kcal, ${item.quantity} ${item.unit ?? '?'}, ref ${reference}, confidence ${item.confidence ?? 'n/a'}`,
+      );
+      console.log(
+        `         evidence: ${item.evidence_status ?? 'missing'} — ${item.source_title?.trim() || 'no source title'}${item.source_url?.trim() ? ` (${item.source_url.trim()})` : ''}`,
+      );
     }
 
-    const breakdown = getItemBreakdown(testCase, items);
-    const bad = breakdown.filter((r) => !r.matched || r.calorieErrorPct > 15);
+    const bad = score.itemBreakdown.filter((row) =>
+      !row.matched ||
+      row.calorieErrorPct > 15 ||
+      row.quantityCorrect === false ||
+      row.unitCorrect === false ||
+      row.referenceWeightCorrect === false ||
+      row.referenceVolumeCorrect === false
+    );
     if (bad.length) {
       for (const row of bad) {
-        console.log(`       ~ ${row.expectedName}: expected ${Math.round(row.expectedLineCalories)} kcal line`);
+        console.log(
+          `       ~ ${row.expectedName}: cal/protein/carbs/fats error ${row.calorieErrorPct.toFixed(1)}%/${row.proteinErrorPct.toFixed(1)}%/${row.carbsErrorPct.toFixed(1)}%/${row.fatsErrorPct.toFixed(1)}%`,
+        );
       }
     }
   } catch (err) {

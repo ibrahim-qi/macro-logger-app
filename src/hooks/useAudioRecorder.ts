@@ -7,6 +7,7 @@ interface RecordingResult {
   mimeType: string;
   durationMs: number;
   peakLevel: number;
+  voicedMs: number;
 }
 
 function pickMimeType(): string {
@@ -72,6 +73,8 @@ export function useAudioRecorder() {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const levelRafRef = useRef<number | null>(null);
   const peakLevelRef = useRef(0);
+  const voicedMsRef = useRef(0);
+  const lastTickAtRef = useRef(0);
   const recordingStartedAtRef = useRef(0);
   const [audioLevel, setAudioLevel] = useState(0);
 
@@ -87,6 +90,8 @@ export function useAudioRecorder() {
     }
     setAudioLevel(0);
     peakLevelRef.current = 0;
+    voicedMsRef.current = 0;
+    lastTickAtRef.current = 0;
     recordingStartedAtRef.current = 0;
   }, []);
 
@@ -110,15 +115,30 @@ export function useAudioRecorder() {
     analyserRef.current = analyser;
 
     const buffer = new Uint8Array(analyser.frequencyBinCount);
-    const tick = () => {
-      analyser.getByteFrequencyData(buffer);
-      let sum = 0;
-      for (let i = 0; i < buffer.length; i += 1) sum += buffer[i];
-      const avg = sum / buffer.length / 255;
-      peakLevelRef.current = Math.max(peakLevelRef.current, avg);
-      setAudioLevel((prev) => prev * 0.18 + avg * 0.82);
+    const tick = (now: number) => {
+      if (lastTickAtRef.current > 0) {
+        const deltaMs = now - lastTickAtRef.current;
+        analyser.getByteFrequencyData(buffer);
+        let sum = 0;
+        for (let i = 0; i < buffer.length; i += 1) sum += buffer[i];
+        const avg = sum / buffer.length / 255;
+        peakLevelRef.current = Math.max(peakLevelRef.current, avg);
+        if (avg > 0.045) {
+          voicedMsRef.current += deltaMs;
+        }
+        setAudioLevel((prev) => prev * 0.18 + avg * 0.82);
+      } else {
+        analyser.getByteFrequencyData(buffer);
+        let sum = 0;
+        for (let i = 0; i < buffer.length; i += 1) sum += buffer[i];
+        const avg = sum / buffer.length / 255;
+        peakLevelRef.current = Math.max(peakLevelRef.current, avg);
+        setAudioLevel((prev) => prev * 0.18 + avg * 0.82);
+      }
+      lastTickAtRef.current = now;
       levelRafRef.current = requestAnimationFrame(tick);
     };
+    lastTickAtRef.current = 0;
     levelRafRef.current = requestAnimationFrame(tick);
   }, [stopLevelMonitor]);
 
@@ -159,6 +179,8 @@ export function useAudioRecorder() {
 
       mediaRecorderRef.current = recorder;
       peakLevelRef.current = 0;
+      voicedMsRef.current = 0;
+      lastTickAtRef.current = 0;
       recordingStartedAtRef.current = Date.now();
       startLevelMonitor(stream);
       recorder.start(250);
@@ -194,9 +216,10 @@ export function useAudioRecorder() {
           const base64 = await blobToBase64(blob);
           const durationMs = Math.max(0, Date.now() - recordingStartedAtRef.current);
           const peakLevel = peakLevelRef.current;
+          const voicedMs = voicedMsRef.current;
           cleanupStream();
           setStatus('idle');
-          resolve({ base64, mimeType, durationMs, peakLevel });
+          resolve({ base64, mimeType, durationMs, peakLevel, voicedMs });
         } catch (error) {
           cleanupStream();
           setStatus('idle');

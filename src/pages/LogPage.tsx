@@ -7,14 +7,15 @@ import type { MealParseInputHandle } from '../components/MealParseInput';
 import MealParseReview from '../components/MealParseReview';
 import LogHero from '../components/LogHero';
 import { useDayContext } from '../hooks/useDayContext';
-import { useUserExperience } from '../context/UserExperienceContext';
-import { useToast } from '../context/ToastContext';
+import { useUserExperience } from '../context/userExperience';
+import { useToast } from '../context/toast';
 import { getLogSuccessToast } from '../copy/experience';
 import { supabase } from '../supabaseClient';
-import { hapticSuccess } from '../utils/haptics';
+import { hapticSuccess, hapticLight } from '../utils/haptics';
 import { createTimestampForDate } from '../utils/localDate';
-import { formatInvokeError, invokeParseMeal } from '../utils/parseMeal';
+import { invokeParseMeal, toParseErrorPayload } from '../utils/parseMeal';
 import type { ParseMealResponse, ParseProgressState } from '../types/mealParse';
+import type { ParseErrorPayload } from '../utils/parseRejection.ts';
 import { advanceParseProgress } from '../utils/parseMeal';
 
 interface LogPageProps {
@@ -23,11 +24,12 @@ interface LogPageProps {
 
 const LogPage: React.FC<LogPageProps> = ({ session }) => {
   const mealParseRef = useRef<MealParseInputHandle>(null);
+  const retryAbortRef = useRef<AbortController | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [reviewTranscript, setReviewTranscript] = useState<string | null>(null);
   const [parseResult, setParseResult] = useState<ParseMealResponse | null>(null);
-  const [parseError, setParseError] = useState<string | null>(null);
+  const [parseError, setParseError] = useState<ParseErrorPayload | null>(null);
   const [logDate, setLogDate] = useState<Date>(new Date());
   const [showSaved, setShowSaved] = useState(false);
   const { refresh: refreshExperience, timezone } = useUserExperience();
@@ -38,6 +40,8 @@ const LogPage: React.FC<LogPageProps> = ({ session }) => {
   const [parseProgress, setParseProgress] = useState<ParseProgressState | null>(null);
 
   const resetReview = useCallback(() => {
+    retryAbortRef.current?.abort();
+    retryAbortRef.current = null;
     mealParseRef.current?.cancel();
     setReviewOpen(false);
     setReviewLoading(false);
@@ -55,7 +59,7 @@ const LogPage: React.FC<LogPageProps> = ({ session }) => {
     setParseResult(null);
     setParseError(null);
     setReviewTranscript(previewText ?? null);
-    setParseProgress(mode === 'voice' ? { current: 'transcribing' } : null);
+    setParseProgress(mode === 'voice' ? { current: 'transcribing' } : { current: 'identifying' });
   }, []);
 
   const handleTranscript = useCallback((transcript: string) => {
@@ -79,11 +83,14 @@ const LogPage: React.FC<LogPageProps> = ({ session }) => {
     resetReview();
   }, [refreshExperience, resetReview]);
 
-  const handleParseError = useCallback((message: string) => {
+  const handleParseError = useCallback((payload: ParseErrorPayload) => {
     setReviewLoading(false);
-    setParseError(message);
+    setParseError(payload);
     setParseProgress(null);
     setReviewOpen(true);
+    if (payload.kind === 'rejection') {
+      hapticLight();
+    }
   }, []);
 
   const handleParseRetry = useCallback(async (text: string) => {
@@ -94,18 +101,39 @@ const LogPage: React.FC<LogPageProps> = ({ session }) => {
     setParseError(null);
     setParseResult(null);
     setReviewTranscript(trimmed);
+    setParseProgress({ current: 'identifying' });
+    retryAbortRef.current?.abort();
+    const controller = new AbortController();
+    retryAbortRef.current = controller;
 
     try {
-      const data = await invokeParseMeal({ text: trimmed });
+      const data = await invokeParseMeal(
+        { text: trimmed },
+        {
+          onProgress: (stage) => {
+            setParseProgress((prev) => advanceParseProgress(prev, stage));
+          },
+          signal: controller.signal,
+        },
+      );
       setParseResult(data);
       setReviewTranscript(data.transcript ?? trimmed);
       setParseError(null);
+      setParseProgress(null);
     } catch (err: unknown) {
-      setParseError(formatInvokeError(err));
+      if (controller.signal.aborted) return;
+      setParseError(toParseErrorPayload(err));
+      setParseProgress(null);
     } finally {
-      setReviewLoading(false);
+      if (retryAbortRef.current === controller) retryAbortRef.current = null;
+      if (!controller.signal.aborted) setReviewLoading(false);
     }
   }, []);
+
+  const handleVoiceRetry = useCallback(() => {
+    resetReview();
+    window.setTimeout(() => mealParseRef.current?.focusMic(), 0);
+  }, [resetReview]);
 
   const handleSavedFoodSelect = async (food: SavedFoodItem) => {
     const { error } = await supabase.from('food_entries').insert({
@@ -175,13 +203,16 @@ const LogPage: React.FC<LogPageProps> = ({ session }) => {
         parseMode={parseMode ?? 'voice'}
         transcript={reviewTranscript}
         parseProgress={parseProgress}
-        parseError={parseError}
+        parseError={parseError?.message ?? null}
+        parseErrorKind={parseError?.kind}
+        parseRejectionReason={parseError?.reason}
         result={parseResult}
         selectedDate={logDate}
         dayContext={dayContext}
         onClose={resetReview}
         onLogged={handleLogged}
         onRetry={handleParseRetry}
+        onRetryVoice={handleVoiceRetry}
       />
     </div>
   );
