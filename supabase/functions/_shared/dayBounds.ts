@@ -1,25 +1,3 @@
-/** Calendar date in the user's local timezone as YYYY-MM-DD */
-export function formatLocalDateKey(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-/** Parse YYYY-MM-DD as local midnight (not UTC) */
-export function parseLocalDateKey(key: string): Date {
-  const [year, month, day] = key.split('-').map(Number);
-  return new Date(year, month - 1, day);
-}
-
-export function getBrowserTimezone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-  } catch {
-    return 'UTC';
-  }
-}
-
 const dtfCache = new Map<string, Intl.DateTimeFormat>();
 
 function getZonedDateTimeFormat(timeZone: string): Intl.DateTimeFormat {
@@ -55,8 +33,7 @@ function getZonedParts(date: Date, timeZone: string) {
   };
 }
 
-/** Convert a wall-clock time in `timeZone` to a UTC Date */
-export function zonedLocalToUtc(
+function zonedLocalToUtc(
   year: number,
   month: number,
   day: number,
@@ -88,37 +65,26 @@ export function zonedLocalToUtc(
   return new Date(utcMs);
 }
 
-/** ISO UTC bounds for querying a calendar day in the given IANA timezone */
-export function localDayBounds(
-  date: Date,
-  timeZone: string = getBrowserTimezone(),
-): { dayStart: string; dayEnd: string; dateKey: string } {
-  const dateKey = formatLocalDateKey(date);
+export function dateKeyInTimezone(timeZone: string, instant = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone }).format(instant);
+}
+
+export function dayBoundsInTimezone(
+  dateKey: string,
+  timeZone: string,
+): { dayStart: string; dayEnd: string } {
   const [year, month, day] = dateKey.split('-').map(Number);
   const start = zonedLocalToUtc(year, month, day, 0, 0, 0, 0, timeZone);
   const end = zonedLocalToUtc(year, month, day, 23, 59, 59, 999, timeZone);
 
   return {
-    dateKey,
     dayStart: start.toISOString(),
     dayEnd: end.toISOString(),
   };
 }
 
-/** Current calendar date in an IANA timezone as YYYY-MM-DD */
-export function dateKeyInTimezone(timeZone: string, instant = new Date()): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone }).format(instant);
-}
-
-/** Store the selected calendar day with the current local clock time */
-export function createTimestampForDate(date: Date): string {
-  const now = new Date();
-  const selected = new Date(date);
-  selected.setHours(
-    now.getHours(),
-    now.getMinutes(),
-    now.getSeconds(),
-    now.getMilliseconds(),
-  );
-  return selected.toISOString();
+export function todayBoundsForTimezone(timeZone: string): { dayStart: string; dayEnd: string; dateKey: string } {
+  const dateKey = dateKeyInTimezone(timeZone);
+  const bounds = dayBoundsInTimezone(dateKey, timeZone);
+  return { ...bounds, dateKey };
 }

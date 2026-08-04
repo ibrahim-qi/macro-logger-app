@@ -6,13 +6,13 @@ import Modal from './Modal';
 import EditEntryForm from './EditEntryForm';
 import GoalsSettingsForm from './GoalsSettingsForm';
 import TodayHero from './TodayHero';
-import TodayDateNav from './TodayDateNav';
+import DatePicker from './DatePicker';
 import { TodayPageSkeleton } from './Skeleton';
 import { computeStreak, datesFromTimestamps } from '../utils/streak';
 import TabNavigation from './TabNavigation';
 import EntriesTab from './EntriesTab';
 import GoalsTab from './GoalsTab';
-import { formatLocalDateKey } from '../utils/localDate';
+import { formatLocalDateKey, localDayBounds } from '../utils/localDate';
 import { useUserExperience } from '../context/UserExperienceContext';
 import { useToast } from '../context/ToastContext';
 import { getDeleteEntryBody, getDeleteEntryTitle, getLogSuccessToast } from '../copy/experience';
@@ -104,9 +104,7 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
   const fetchEntries = useCallback(async (date: Date) => {
     setLoading(true);
     setError(null);
-    const dateString = formatDate(date);
-    const dayStart = `${dateString} 00:00:00`;
-    const dayEnd = `${dateString} 23:59:59`;
+    const { dayStart, dayEnd, dateKey } = localDayBounds(date);
 
     try {
       const { data, error: fetchError } = await supabase
@@ -122,7 +120,7 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
       setEntries(data || []);
     } catch (err: any) {
       console.error('Error fetching food entries:', err);
-      setError(`Failed to load entries for ${dateString}: ${err.message}`);
+      setError(`Failed to load entries for ${dateKey}: ${err.message}`);
       setEntries([]);
     } finally {
       setLoading(false);
@@ -382,10 +380,13 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
 
   return (
     <div className="today-page">
-      <TodayDateNav
-        displayedDate={displayedDate}
+      <DatePicker
+        selectedDate={displayedDate}
+        onDateChange={setDisplayedDate}
+        layout="nav"
         onPrevious={goToPreviousDay}
         onNext={goToNextDay}
+        disableNext={isToday(displayedDate)}
         onJumpToday={() => setDisplayedDate(new Date())}
       />
 

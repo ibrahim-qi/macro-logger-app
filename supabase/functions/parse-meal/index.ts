@@ -3,6 +3,7 @@ import { corsHeaders } from '../_shared/cors.ts';
 import { normalizeItems, type ParsedFoodItem } from '../_shared/normalizeItems.ts';
 import { applySavedFoods } from '../_shared/applySavedFoods.ts';
 import { buildTranscriptionPrompt } from '../_shared/transcriptionPrompt.ts';
+import { todayBoundsForTimezone } from '../_shared/dayBounds.ts';
 import { assertUsableTranscript } from '../_shared/transcriptValidation.ts';
 import {
   assertValidAudioPayload,
@@ -90,12 +91,16 @@ function buildSystemPrompt(context?: {
 }
 
 async function loadUserParseContext(supabase: ReturnType<typeof createClient>, userId: string) {
-  const today = new Date().toISOString().split('T')[0];
-  const dayStart = `${today} 00:00:00`;
-  const dayEnd = `${today} 23:59:59`;
+  const profileRes = await supabase
+    .from('profiles')
+    .select('display_name, timezone')
+    .eq('id', userId)
+    .maybeSingle();
 
-  const [profileRes, goalsRes, entriesRes, savedRes] = await Promise.all([
-    supabase.from('profiles').select('display_name').eq('id', userId).maybeSingle(),
+  const timeZone = profileRes.data?.timezone?.trim() || 'UTC';
+  const { dayStart, dayEnd } = todayBoundsForTimezone(timeZone);
+
+  const [goalsRes, entriesRes, savedRes] = await Promise.all([
     supabase.from('user_goals').select('daily_calories_goal, daily_protein_goal').eq('user_id', userId).maybeSingle(),
     supabase.from('food_entries').select('food_name, calories, protein, quantity').eq('user_id', userId).gte('created_at', dayStart).lte('created_at', dayEnd),
     supabase.from('saved_foods').select('food_name, calories, protein, carbs, fats').eq('user_id', userId).order('food_name').limit(12),

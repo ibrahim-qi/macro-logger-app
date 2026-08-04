@@ -15,7 +15,8 @@ import {
   getMealPeriod,
   getTimeOfDay,
 } from '../utils/experience';
-import { ensureProfile, fetchProfile, updateDisplayName } from '../utils/profile';
+import { localDayBounds } from '../utils/localDate';
+import { ensureProfile, fetchProfile, syncProfileTimezone, updateDisplayName } from '../utils/profile';
 import { supabase } from '../supabaseClient';
 
 interface UserExperienceValue {
@@ -63,9 +64,7 @@ async function fetchGoals(userId: string): Promise<UserGoals | null> {
 }
 
 async function fetchTodayTotals(userId: string) {
-  const dateString = formatDateKey();
-  const dayStart = `${dateString} 00:00:00`;
-  const dayEnd = `${dateString} 23:59:59`;
+  const { dayStart, dayEnd } = localDayBounds(new Date());
 
   const { data, error } = await supabase
     .from('food_entries')
@@ -176,7 +175,13 @@ export function UserExperienceProvider({
       streak,
       weeklyDaysLogged,
     ] = await Promise.all([
-      fetchProfile(userId).then((row) => row ?? ensureProfile(userId, session.user.email)),
+      fetchProfile(userId).then(async (row) => {
+        const resolved = row ?? await ensureProfile(userId, session.user.email);
+        if (resolved) {
+          await syncProfileTimezone(userId);
+        }
+        return resolved;
+      }),
       fetchGoals(userId),
       fetchTodayTotals(userId),
       fetchStreak(userId),

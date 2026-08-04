@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
@@ -11,7 +11,7 @@ import { hapticLight, hapticSuccess } from '../utils/haptics';
 import { getReviewHint } from '../copy/experience';
 import { useUserExperience } from '../context/UserExperienceContext';
 import { upsertSavedFoods } from '../utils/savedFoods';
-import { localDayBounds } from '../utils/localDate';
+import { localDayBounds, createTimestampForDate } from '../utils/localDate';
 import { useCountUp } from '../hooks/useCountUp';
 import MealParseLoading, { type ParseMode } from './MealParseLoading';
 import { getParseLoadingLabel, getReviewLoadingTitle } from '../copy/experience';
@@ -45,8 +45,6 @@ type ReviewItem = ParsedFoodItem & { id: string; from_saved_food?: boolean };
 function toReviewItems(items: ParsedFoodItem[]): ReviewItem[] {
   return items.map((item) => ({ ...item, id: crypto.randomUUID() }));
 }
-
-const formatDate = (date: Date): string => localDayBounds(date).dateKey;
 
 function parseNumber(value: string, fallback: number): number {
   const parsed = Number(value);
@@ -115,6 +113,12 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
   }, [result]);
 
   useEffect(() => {
+    if (!editingId) return;
+    const row = document.getElementById(`meal-review-row-${editingId}`);
+    row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [editingId]);
+
+  useEffect(() => {
     if (!loading) {
       lastTranscriptRef.current = null;
       return;
@@ -143,9 +147,7 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
     if (!isOpen) return;
 
     const fetchContext = async () => {
-      const dateString = formatDate(selectedDate);
-      const dayStart = `${dateString} 00:00:00`;
-      const dayEnd = `${dateString} 23:59:59`;
+      const { dayStart, dayEnd } = localDayBounds(selectedDate);
 
       const [goalsRes, entriesRes] = await Promise.all([
         supabase
@@ -200,13 +202,6 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
   const calorieGoalPct = userGoals
     ? Math.min(100, (afterLogCalories / userGoals.daily_calories_goal) * 100)
     : 0;
-
-  const createTimestampForDate = useCallback((date: Date): string => {
-    const now = new Date();
-    const d = new Date(date);
-    d.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
-    return d.toISOString();
-  }, []);
 
   const markUnverified = (id: string) => {
     setVerified((prev) => {
@@ -383,14 +378,20 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
       onClose={handleDismiss}
       title={loadingVisible ? getReviewLoadingTitle(displayTranscript) : 'Verify your meal'}
       footer={footer}
+      variant="sheet"
     >
-      <div className="meal-review-stage">
+      <div className={`meal-review-stage ${!contentReady ? 'meal-review-stage--busy' : ''}`}>
         {loadingVisible && (
-          <MealParseLoading
-            mode={parseMode}
-            transcript={displayTranscript}
-            exiting={contentReady}
-          />
+          <div
+            className={`meal-review-stage__loading ${contentReady ? 'meal-review-stage__loading--exit' : ''}`}
+            aria-hidden={contentReady}
+          >
+            <MealParseLoading
+              mode={parseMode}
+              transcript={displayTranscript}
+              exiting={contentReady}
+            />
+          </div>
         )}
 
         {contentReady && result && (
@@ -455,6 +456,7 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
                 return (
                   <li
                     key={item.id}
+                    id={`meal-review-row-${item.id}`}
                     className={`meal-review-row ${itemsRevealed ? 'meal-review-row--reveal' : ''} ${isVerified ? 'meal-review-row--verified' : 'meal-review-row--pending'}`}
                     style={{ animationDelay: `${index * 80}ms` }}
                   >

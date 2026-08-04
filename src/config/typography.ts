@@ -1,9 +1,9 @@
-/** Active typography — Outfit display + DM Sans body + Fraunces wordmark */
+/** Active typography — Outfit display + wordmark, DM Sans body */
 export const ACTIVE_TYPOGRAPHY = {
-  id: 'outfit-dm-fraunces',
-  wordmarkFont: 'Fraunces',
+  id: 'outfit-dm-minimal',
+  wordmarkFont: 'Outfit',
   uiFont: 'DM Sans',
   displayFont: 'Outfit',
-  wordmarkWeight: 500,
-  wordmarkLetterSpacing: '0.02em',
+  wordmarkWeight: 600,
+  wordmarkLetterSpacing: '-0.04em',
 } as const;

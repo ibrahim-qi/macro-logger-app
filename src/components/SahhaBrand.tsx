@@ -61,7 +61,6 @@ export function SahhaWordmark({ className = '', size = 'header' }: SahhaWordmark
   return (
     <span className={`sahha-logo sahha-logo--${size} ${className}`.trim()} aria-hidden="true">
       <span className="sahha-logo__word">Sahha</span>
-      <span className="sahha-logo__accent" />
     </span>
   );
 }

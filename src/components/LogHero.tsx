@@ -1,5 +1,5 @@
 import React from 'react';
-import LogDatePicker from './LogDatePicker';
+import DatePicker from './DatePicker';
 import { getLogHelper, getLogTitle } from '../copy/experience';
 import { useUserExperience } from '../context/UserExperienceContext';
 
@@ -16,9 +16,10 @@ const LogHero: React.FC<LogHeroProps> = ({ selectedDate, onDateChange }) => {
       <div className="log-hero__canopy" aria-hidden="true" />
 
       <div className="log-hero__date">
-        <LogDatePicker
+        <DatePicker
           selectedDate={selectedDate}
           onDateChange={onDateChange}
+          layout="standalone"
           variant="pill"
         />
       </div>

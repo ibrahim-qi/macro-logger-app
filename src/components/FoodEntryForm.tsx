@@ -1,7 +1,7 @@
 import React, { useState, forwardRef, useImperativeHandle, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import type { Session } from '@supabase/supabase-js';
-import { formatLocalDateKey } from '../utils/localDate';
+import { formatLocalDateKey, createTimestampForDate } from '../utils/localDate';
 
 interface FoodEntryFormProps {
   session: Session;
@@ -85,13 +85,6 @@ const FoodEntryForm = forwardRef<FoodEntryFormHandle, FoodEntryFormProps>(({
   };
 
   const formatDateForInput = (date: Date): string => formatLocalDateKey(date);
-
-  const createTimestampForDate = (date: Date): string => {
-    const now = new Date();
-    const d = new Date(date);
-    d.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
-    return d.toISOString();
-  };
 
   useImperativeHandle(ref, () => ({
     setFields: (food) => {
@@ -234,7 +227,7 @@ const FoodEntryForm = forwardRef<FoodEntryFormHandle, FoodEntryFormProps>(({
                       setShowDatePicker(false);
                     }}
                     className={`p-4 rounded-2xl border text-center transition-all ${
-                      isActive ? 'border-[rgba(56,189,248,0.5)] bg-[rgba(56,189,248,0.1)] text-accent' : 'border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-2)]'
+                      isActive ? 'border-[rgba(var(--color-accent-rgb),0.5)] bg-[rgba(var(--color-accent-rgb),0.1)] text-accent' : 'border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-2)]'
                     }`}
                   >
                     <div className="font-semibold">{label}</div>

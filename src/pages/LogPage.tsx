@@ -12,17 +12,11 @@ import { useToast } from '../context/ToastContext';
 import { getLogSuccessToast } from '../copy/experience';
 import { supabase } from '../supabaseClient';
 import { hapticSuccess } from '../utils/haptics';
+import { createTimestampForDate } from '../utils/localDate';
 import type { ParseMealResponse } from '../types/mealParse';
 
 interface LogPageProps {
   session: Session;
-}
-
-function createTimestampForDate(date: Date): string {
-  const now = new Date();
-  const d = new Date(date);
-  d.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
-  return d.toISOString();
 }
 
 const LogPage: React.FC<LogPageProps> = ({ session }) => {
