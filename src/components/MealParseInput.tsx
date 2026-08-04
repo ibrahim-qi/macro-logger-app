@@ -13,7 +13,6 @@ import type { ParseMealResponse, ParseProgressStage } from '../types/mealParse';
 import { formatInvokeError, invokeParseMeal, invokeParseMealVoice } from '../utils/parseMeal';
 import { assertRecordingHasSpeech, normalizeAudioMimeType } from '../utils/transcriptValidation';
 import { hapticLight, hapticMedium } from '../utils/haptics';
-import { getParseLoadingLabel } from '../copy/experience';
 
 export interface MealParseInputHandle {
   cancel: () => void;
@@ -30,6 +29,8 @@ interface MealParseInputProps {
   onTranscript?: (transcript: string) => void;
   onParseProgress?: (stage: ParseProgressStage) => void;
   onParseError?: (message: string) => void;
+  /** Hide mic hints while the review sheet is open. */
+  reviewActive?: boolean;
 }
 
 function formatRecordingTime(seconds: number): string {
@@ -46,6 +47,7 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
   onTranscript,
   onParseProgress,
   onParseError,
+  reviewActive = false,
 }, ref) => {
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
@@ -255,7 +257,7 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
             </p>
           )}
 
-          {isSupported && (
+          {isSupported && !reviewActive && (
             <p key={voiceHint} className="sahha-voice__hint">
               {voiceHint === 'listening' && 'Listening…'}
               {voiceHint === 'analysing' && 'Processing…'}
@@ -288,7 +290,7 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
           disabled={loading || isRecording || !text.trim()}
           className="btn-primary mt-3 w-full"
         >
-          {isProcessing ? getParseLoadingLabel() : 'Log meal'}
+          {isProcessing && !reviewActive ? 'Working…' : 'Log meal'}
         </button>
       </div>
 

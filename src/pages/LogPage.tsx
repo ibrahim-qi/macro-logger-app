@@ -136,6 +136,7 @@ const LogPage: React.FC<LogPageProps> = ({ session }) => {
 
       <MealParseInput
         ref={mealParseRef}
+        reviewActive={reviewOpen}
         onParseStart={handleParseStart}
         onTranscript={handleTranscript}
         onParseProgress={handleParseProgress}

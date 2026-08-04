@@ -1,5 +1,4 @@
 import type { ExperienceContext } from '../types/experience';
-import type { ParseProgressStage } from '../types/mealParse';
 import { mealPeriodPrompt, timeOfDayLabel } from '../utils/experience';
 
 function withName(prefix: string, ctx: ExperienceContext): string {
@@ -7,35 +6,6 @@ function withName(prefix: string, ctx: ExperienceContext): string {
 }
 
 export const SAHHA_TAGLINE = 'Speak naturally. Review with confidence.' as const;
-
-/** Modal title while the review sheet is loading. */
-export function getReviewLoadingTitle(): string {
-  return 'One moment…';
-}
-
-/** Short label for the parse footer button only. */
-export function getParseLoadingLabel(): string {
-  return 'One moment…';
-}
-
-export function getParseLoadingProgress(
-  hasTranscript: boolean,
-  stage?: ParseProgressStage | null,
-): number {
-  if (!hasTranscript) {
-    return stage === 'transcribing' ? 32 : 28;
-  }
-  switch (stage) {
-    case 'identifying':
-      return 58;
-    case 'looking_up':
-      return 72;
-    case 'estimating':
-      return 86;
-    default:
-      return 48;
-  }
-}
 
 export function getGreeting(ctx: ExperienceContext): string {
   return withName(timeOfDayLabel(ctx.timeOfDay), ctx);

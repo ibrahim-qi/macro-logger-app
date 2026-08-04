@@ -8,6 +8,7 @@ interface ModalProps {
   onClose: () => void;
   children: ReactNode;
   title?: string;
+  ariaLabel?: string;
   footer?: ReactNode;
   /** Full-height bottom sheet tuned for long scrollable content (meal review). */
   variant?: 'default' | 'sheet';
@@ -38,6 +39,7 @@ const Modal: React.FC<ModalProps> = ({
   onClose,
   children,
   title,
+  ariaLabel,
   footer,
   variant = 'default',
 }) => {
@@ -77,6 +79,7 @@ const Modal: React.FC<ModalProps> = ({
       onClick={onClose}
       aria-modal="true"
       role="dialog"
+      aria-label={!title ? ariaLabel : undefined}
     >
       <div className={panelClass} onClick={handleContentClick}>
         {title && (

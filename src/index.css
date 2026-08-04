@@ -1078,9 +1078,9 @@ h1, h2, h3 {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 2.75rem 1.5rem 2.25rem;
+  padding: 3rem 1.5rem 2.5rem;
   text-align: center;
-  min-height: 11rem;
+  min-height: 10rem;
   transition: opacity 0.35s ease, transform 0.35s ease;
 }
 
@@ -1090,19 +1090,46 @@ h1, h2, h3 {
   pointer-events: none;
 }
 
+.parse-minimal__orb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: breakdown-mark-breathe 2.8s ease-in-out infinite;
+}
+
 .parse-minimal__mark {
-  animation: breakdown-mark-breathe 2.6s ease-in-out infinite;
+  display: block;
 }
 
 .parse-minimal__quote {
-  margin: 1.125rem 0 0;
-  max-width: 18rem;
-  font-size: 0.875rem;
+  margin: 1.375rem 0 0;
+  max-width: 17rem;
+  font-size: 0.9375rem;
   line-height: 1.55;
-  color: rgba(226, 232, 240, 0.72);
+  color: rgba(226, 232, 240, 0.78);
   font-style: italic;
   overflow-wrap: anywhere;
-  animation: parse-quote-in 0.45s cubic-bezier(0.32, 0.72, 0, 1) both;
+  animation: parse-quote-in 0.5s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+.parse-minimal__line {
+  width: 3rem;
+  height: 2px;
+  margin-top: 1.5rem;
+  border-radius: 9999px;
+  background: rgba(71, 85, 105, 0.28);
+  overflow: hidden;
+  position: relative;
+}
+
+.parse-minimal__line::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 45%;
+  border-radius: inherit;
+  background: rgba(var(--color-accent-rgb), 0.85);
+  animation: parse-line-slide 1.35s ease-in-out infinite;
 }
 
 @keyframes parse-quote-in {
@@ -1116,25 +1143,18 @@ h1, h2, h3 {
   }
 }
 
-.parse-minimal__track {
-  width: 100%;
-  max-width: 5.5rem;
-  height: 2px;
-  margin-top: 1.75rem;
-  border-radius: 9999px;
-  background: rgba(71, 85, 105, 0.3);
-  overflow: hidden;
-}
-
-.parse-minimal__fill {
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(
-    90deg,
-    rgba(var(--color-accent-rgb), 0.35),
-    rgba(var(--color-accent-rgb), 0.9)
-  );
-  transition: width 0.55s cubic-bezier(0.32, 0.72, 0, 1);
+@keyframes parse-line-slide {
+  0% {
+    transform: translateX(-120%);
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(280%);
+    opacity: 0.4;
+  }
 }
 
 .sahha-breakdown--wait {
@@ -1349,7 +1369,7 @@ h1, h2, h3 {
 }
 
 .meal-review-stage--busy {
-  min-height: 16rem;
+  min-height: 10rem;
 }
 
 .meal-review-stage__loading {

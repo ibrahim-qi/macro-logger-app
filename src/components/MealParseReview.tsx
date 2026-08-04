@@ -8,12 +8,14 @@ import type { ParsedFoodItem, ParseMealResponse, ParseProgressState } from '../t
 import type { DayContext } from '../hooks/useDayContext';
 import { sumItemMacros } from '../utils/mealTotals';
 import { hapticLight, hapticSuccess } from '../utils/haptics';
-import { getParseLoadingLabel, getReviewHint, getReviewLoadingTitle } from '../copy/experience';
+import { getReviewHint } from '../copy/experience';
 import { useUserExperience } from '../context/UserExperienceContext';
 import { upsertSavedFoods } from '../utils/savedFoods';
 import { localDayBounds, createTimestampForDate } from '../utils/localDate';
 import { useCountUp } from '../hooks/useCountUp';
-import MealParseLoading, { type ParseMode } from './MealParseLoading';
+import MealParseLoading from './MealParseLoading';
+
+type ParseMode = 'voice' | 'text';
 
 interface MealParseReviewProps {
   session: Session;
@@ -56,9 +58,9 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
   session,
   isOpen,
   loading = false,
-  parseMode = 'voice',
+  parseMode: _parseMode = 'voice',
   transcript,
-  parseProgress,
+  parseProgress: _parseProgress,
   parseError,
   result,
   selectedDate,
@@ -338,7 +340,6 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
   };
 
   const displayTranscript = transcript ?? result?.transcript ?? null;
-  const loadingLabel = getParseLoadingLabel();
   const showParseError = Boolean(parseError) && !loadingVisible;
   const canRetryParse = Boolean(retryDraft.trim() && onRetry);
 
@@ -366,14 +367,9 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
       )}
     </div>
   ) : loadingVisible ? (
-    <div className="flex gap-3">
-      <button type="button" onClick={onClose} className="flex-1 btn-ghost py-3">
-        Cancel
-      </button>
-      <button type="button" disabled className="flex-1 btn-primary opacity-50">
-        {loadingLabel}
-      </button>
-    </div>
+    <button type="button" onClick={onClose} className="w-full btn-ghost py-3">
+      Cancel
+    </button>
   ) : (
     <div className="flex gap-3">
       <button type="button" onClick={onClose} className="flex-1 btn-ghost py-3">
@@ -398,9 +394,10 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={handleDismiss}
+      ariaLabel={loadingVisible ? 'Working on your meal' : undefined}
       title={
         loadingVisible
-          ? getReviewLoadingTitle()
+          ? undefined
           : showParseError
             ? 'Could not parse meal'
             : 'Verify your meal'
@@ -415,9 +412,7 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
             aria-hidden={contentReady}
           >
             <MealParseLoading
-              mode={parseMode}
               transcript={displayTranscript}
-              progress={parseProgress}
               exiting={contentReady}
             />
           </div>
