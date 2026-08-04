@@ -48,7 +48,10 @@ const Modal: React.FC<ModalProps> = ({
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
   const titleId = useId();
+
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -66,6 +69,8 @@ const Modal: React.FC<ModalProps> = ({
     };
   }, [isOpen]);
 
+  // Trap focus and handle Escape only when the modal opens/closes — not when
+  // parent re-renders pass a new onClose callback (which would steal focus from inputs).
   useEffect(() => {
     if (!isOpen) return;
 
@@ -90,7 +95,7 @@ const Modal: React.FC<ModalProps> = ({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
 
@@ -119,7 +124,7 @@ const Modal: React.FC<ModalProps> = ({
       document.removeEventListener('keydown', onKeyDown);
       previousFocusRef.current?.focus();
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

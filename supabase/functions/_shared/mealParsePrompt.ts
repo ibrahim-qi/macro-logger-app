@@ -186,9 +186,18 @@ ITEM INTERPRETATION
 - Split every independently measurable food, drink, sauce, spread, oil, topping, and ingredient into its own item.
 - Preserve brands and preparation details from the user's wording.
 - Use stable sequential IDs: item_1, item_2, and so on.
-- quantity is a count of identical units, never grams or millilitres. Explicit weights and volumes describe one serving, so quantity is 1.
-- unit is "count" for discrete pieces and "serving" for weighed, poured, or mixed portions.
+- quantity is how many identical portions the user ate — never grams or millilitres.
+- unit is "count" only when the user explicitly states a number of discrete pieces (e.g. "two eggs", "three biscuits"). unit is "serving" for weighed, poured, mixed, or vague portions.
 - Infer the most likely preparation, edible portion, and physical amount from the full wording and UK context. Do not use any app-supplied food defaults.
+
+PORTION AND QUANTITY (critical)
+- Vague wording with no number ("some", "a bit of", "I had chicken nuggets", "a portion of rice"): quantity = 1, unit = "serving", reference_weight_g = the total likely portion eaten.
+- Never invent a piece count the user did not say. Do not set quantity to a typical menu count (e.g. 6 nuggets, 4 fish fingers) unless the user said that number.
+- reference_weight_g is always the weight of ONE quantity unit. For quantity = 1 and unit = "serving", it is the full portion weight (e.g. ~100g chicken nuggets). For unit = "count", it is the weight of ONE piece only (e.g. ~17g per nugget), never the whole portion.
+- Wrong: quantity 6 + reference_weight_g 120 for vague "chicken nuggets" (that implies 720g). Right: quantity 1 + reference_weight_g ~100 + portion_assumption "assumed ~6 nuggets (~100g)".
+- Wrong: quantity 6 + reference_weight_g 120 when the user said "6 nuggets" (that implies 720g). Right: quantity 1 + reference_weight_g ~100, OR quantity 6 + reference_weight_g ~17 per nugget.
+- Multiple portions only when the user is explicit: "two portions", "2 servings", "two bags", or a stated count of pieces.
+- Small composed foods usually eaten as one portion (nuggets, goujons, wings, fries, onion rings): default to one serving with total weight in reference_weight_g unless the user gives a count.
 - For a solid portion set reference_weight_g and set reference_volume_ml to null.
 - For a drink or poured liquid set reference_volume_ml. Set reference_weight_g only when you can infer an appropriate mass independently; never assume every millilitre weighs one gram.
 - portion_assumption must plainly state what you inferred so the user can review it.
@@ -200,7 +209,7 @@ COMPLEX AND MULTI-PART MEALS
 - When the user corrects themselves ("sorry, about 80 grams, not 100"), use the corrected amount in portion_assumption and reference fields.
 - Respect explicit negatives ("no dressing", "without sauce") — do not add what the user ruled out.
 - Never merge unrelated foods into one item (e.g. do not combine chicken, rice, salad, oil, yogurt, and toppings into one or two lines).
-- Countable pieces with a per-piece weight (e.g. five thighs at 65 g each): quantity = count, reference_weight_g = per-piece cooked weight.
+- Large countable pieces the user names explicitly (e.g. "two chicken thighs"): quantity = stated count, unit = "count", reference_weight_g = per-piece cooked weight only.
 - Partial use of an ingredient (e.g. "maybe about half" of a tablespoon of oil): reflect the likely amount consumed in portion_assumption and reference_weight_g or reference_volume_ml.
 
 Return only the schema.`;

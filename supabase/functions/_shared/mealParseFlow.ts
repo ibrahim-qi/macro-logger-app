@@ -1,4 +1,5 @@
 import { applyMacroSanity } from './macroSanity.ts';
+import { sanifyInterpretationPortions } from './interpretationPortionSanity.ts';
 import { findSavedFoodMatch, type SavedFoodMacros } from './applySavedFoods.ts';
 import { ParseRejectionError } from './parseRejection.ts';
 import { MEAL_HINT } from './transcriptValidation.ts';
@@ -519,7 +520,10 @@ export async function parseMealWithResearch(
     MEAL_INTERPRETATION_SCHEMA as unknown as Record<string, unknown>,
     INTERPRETATION_MAX_TOKENS,
   );
-  const interpretation = normalizeInterpretation(rawInterpretation);
+  const interpretation = sanifyInterpretationPortions(
+    normalizeInterpretation(rawInterpretation),
+    mealText,
+  );
   rejectInterpretation(interpretation, mealText);
   const interpretationMs = Math.round(nowMs() - interpretationStartedAt);
 
