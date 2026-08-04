@@ -1,9 +1,39 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from '../supabaseClient';
-import type { ParseMealResponse, TranscribeMealResponse } from '../types/mealParse';
+import type { ParseMealResponse, ParseProgressStage, ParseProgressState, TranscribeMealResponse } from '../types/mealParse';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
+const PROGRESS_STAGE_ORDER: ParseProgressStage[] = [
+  'transcribing',
+  'identifying',
+  'looking_up',
+  'estimating',
+];
+
+export function advanceParseProgress(
+  prev: ParseProgressState | null,
+  stage: ParseProgressStage,
+): ParseProgressState {
+  if (!prev) {
+    return { current: stage };
+  }
+
+  const prevIndex = PROGRESS_STAGE_ORDER.indexOf(prev.current);
+  const nextIndex = PROGRESS_STAGE_ORDER.indexOf(stage);
+  if (nextIndex < prevIndex && stage !== 'transcribing') {
+    return prev;
+  }
+
+  return { current: stage };
+}
+
+const PROGRESS_STAGES = new Set<string>(['transcribing', 'identifying', 'looking_up', 'estimating']);
+
+function isParseProgressStage(value: string): value is ParseProgressStage {
+  return PROGRESS_STAGES.has(value);
+}
 
 async function readFunctionError(error: FunctionsHttpError): Promise<string | null> {
   const response = error.context as Response | undefined;
@@ -127,7 +157,10 @@ async function getFreshAccessToken(): Promise<string> {
 /** Voice parse over one connection — streams transcript before macros finish. */
 export async function invokeParseMealVoice(
   body: { audio: string; mimeType: string },
-  callbacks?: { onTranscript?: (transcript: string) => void },
+  callbacks?: {
+    onTranscript?: (transcript: string) => void;
+    onProgress?: (stage: ParseProgressStage) => void;
+  },
 ): Promise<ParseMealResponse> {
   const accessToken = await getFreshAccessToken();
   const response = await fetch(`${supabaseUrl}/functions/v1/parse-meal`, {
@@ -160,6 +193,11 @@ export async function invokeParseMealVoice(
   let streamError: Error | null = null;
 
   await readNdjsonStream(response, (event) => {
+    if (event.event === 'progress' && typeof event.stage === 'string' && isParseProgressStage(event.stage)) {
+      callbacks?.onProgress?.(event.stage);
+      return;
+    }
+
     if (event.event === 'transcript' && typeof event.transcript === 'string') {
       const transcript = event.transcript.trim();
       if (transcript) callbacks?.onTranscript?.(transcript);

@@ -14,7 +14,8 @@ import { supabase } from '../supabaseClient';
 import { hapticSuccess } from '../utils/haptics';
 import { createTimestampForDate } from '../utils/localDate';
 import { formatInvokeError, invokeParseMeal } from '../utils/parseMeal';
-import type { ParseMealResponse } from '../types/mealParse';
+import type { ParseMealResponse, ParseProgressState } from '../types/mealParse';
+import { advanceParseProgress } from '../utils/parseMeal';
 
 interface LogPageProps {
   session: Session;
@@ -34,6 +35,7 @@ const LogPage: React.FC<LogPageProps> = ({ session }) => {
   const { showToast } = useToast();
 
   const [parseMode, setParseMode] = useState<'voice' | 'text' | null>(null);
+  const [parseProgress, setParseProgress] = useState<ParseProgressState | null>(null);
 
   const resetReview = useCallback(() => {
     mealParseRef.current?.cancel();
@@ -43,6 +45,7 @@ const LogPage: React.FC<LogPageProps> = ({ session }) => {
     setParseResult(null);
     setParseError(null);
     setParseMode(null);
+    setParseProgress(null);
   }, []);
 
   const handleParseStart = useCallback(({ mode, previewText }: { mode: 'voice' | 'text'; previewText?: string }) => {
@@ -52,10 +55,15 @@ const LogPage: React.FC<LogPageProps> = ({ session }) => {
     setParseResult(null);
     setParseError(null);
     setReviewTranscript(previewText ?? null);
+    setParseProgress(mode === 'voice' ? { current: 'transcribing' } : null);
   }, []);
 
   const handleTranscript = useCallback((transcript: string) => {
     setReviewTranscript(transcript);
+  }, []);
+
+  const handleParseProgress = useCallback((stage: ParseProgressState['current']) => {
+    setParseProgress((prev) => advanceParseProgress(prev, stage));
   }, []);
 
   const handleParsed = useCallback((result: ParseMealResponse) => {
@@ -63,6 +71,7 @@ const LogPage: React.FC<LogPageProps> = ({ session }) => {
     setReviewTranscript(result.transcript ?? null);
     setReviewLoading(false);
     setParseError(null);
+    setParseProgress(null);
   }, []);
 
   const handleLogged = useCallback(() => {
@@ -73,6 +82,7 @@ const LogPage: React.FC<LogPageProps> = ({ session }) => {
   const handleParseError = useCallback((message: string) => {
     setReviewLoading(false);
     setParseError(message);
+    setParseProgress(null);
     setReviewOpen(true);
   }, []);
 
@@ -128,6 +138,7 @@ const LogPage: React.FC<LogPageProps> = ({ session }) => {
         ref={mealParseRef}
         onParseStart={handleParseStart}
         onTranscript={handleTranscript}
+        onParseProgress={handleParseProgress}
         onParsed={handleParsed}
         onParseError={handleParseError}
       />
@@ -162,6 +173,7 @@ const LogPage: React.FC<LogPageProps> = ({ session }) => {
         loading={reviewLoading}
         parseMode={parseMode ?? 'voice'}
         transcript={reviewTranscript}
+        parseProgress={parseProgress}
         parseError={parseError}
         result={parseResult}
         selectedDate={logDate}

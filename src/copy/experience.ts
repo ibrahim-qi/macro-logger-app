@@ -1,4 +1,5 @@
 import type { ExperienceContext } from '../types/experience';
+import type { ParseProgressStage } from '../types/mealParse';
 import { mealPeriodPrompt, timeOfDayLabel } from '../utils/experience';
 
 function withName(prefix: string, ctx: ExperienceContext): string {
@@ -8,25 +9,69 @@ function withName(prefix: string, ctx: ExperienceContext): string {
 export const SAHHA_TAGLINE = 'Speak naturally. Review with confidence.' as const;
 
 /** Modal title while the review sheet is loading. */
-export function getReviewLoadingTitle(transcript: string | null): string {
-  return transcript?.trim() ? 'Analysing your meal' : 'One moment';
+export function getReviewLoadingTitle(
+  transcript: string | null,
+  stage?: ParseProgressStage | null,
+): string {
+  return getParseLoadingHeadline(Boolean(transcript?.trim()), stage);
 }
 
 /** Short label for the parse footer button only. */
 export function getParseLoadingLabel(mode: 'voice' | 'text', transcript: string | null): string {
-  if (mode === 'voice' && !transcript?.trim()) return 'Transcribing…';
-  return transcript?.trim() ? 'Analysing…' : 'One moment…';
+  if (mode === 'voice' && !transcript?.trim()) return 'One moment…';
+  return transcript?.trim() ? 'Got it…' : 'One moment…';
 }
 
 /** Calm sublabel during AI parse — builds trust without overclaiming research. */
-export function getParseLoadingSublabel(mode: 'voice' | 'text', transcript: string | null): string {
+export function getParseLoadingSublabel(
+  mode: 'voice' | 'text',
+  transcript: string | null,
+  options?: { slow?: boolean },
+): string {
   if (mode === 'voice' && !transcript?.trim()) {
-    return 'Turning your voice into a nutrition breakdown';
+    if (options?.slow) return 'Still catching what you said';
+    return 'Catching what you said';
   }
   if (!transcript?.trim()) {
-    return 'Preparing a private nutrition breakdown';
+    return 'Reading your meal';
   }
-  return 'Estimating nutrition from your description';
+  if (options?.slow) {
+    return 'Still on it — bigger meals can take a few extra seconds';
+  }
+  return 'Putting your breakdown together';
+}
+
+/** Main headline inside the parse loading view — two calm phases, no pipeline jargon. */
+export function getParseLoadingHeadline(
+  hasTranscript: boolean,
+  stage?: ParseProgressStage | null,
+): string {
+  if (!hasTranscript) return 'One moment…';
+  if (stage === 'estimating') return 'Almost there';
+  return 'Got it';
+}
+
+/**
+ * Optimistic progress fill — jumps forward when the transcript lands so the wait feels shorter.
+ * Backend stages still drive updates; users never see step names.
+ */
+export function getParseLoadingProgress(
+  hasTranscript: boolean,
+  stage?: ParseProgressStage | null,
+): number {
+  if (!hasTranscript) {
+    return stage === 'transcribing' ? 38 : 36;
+  }
+  switch (stage) {
+    case 'identifying':
+      return 62;
+    case 'looking_up':
+      return 74;
+    case 'estimating':
+      return 88;
+    default:
+      return 54;
+  }
 }
 
 /** Shown in review after parse when UK web lookup ran. */
@@ -42,19 +87,6 @@ export function getParseResearchNote(response: {
     return 'UK web lookup is not configured — double-check branded or vague items.';
   }
   return null;
-}
-
-/** Status line shown inside the parse loading animation. */
-export function getParseStageLabel(
-  mode: 'voice' | 'text',
-  transcript: string | null,
-  stage: 'wait' | 'transcribe' | 'transcript' | 'breakdown',
-): string {
-  if (stage === 'wait') return mode === 'voice' ? 'Transcribing…' : 'Analysing…';
-  if (stage === 'transcribe') return 'Transcribing…';
-  if (stage === 'transcript') return 'Got it';
-  if (!transcript?.trim()) return 'Analysing…';
-  return 'Building your breakdown';
 }
 
 export function getGreeting(ctx: ExperienceContext): string {

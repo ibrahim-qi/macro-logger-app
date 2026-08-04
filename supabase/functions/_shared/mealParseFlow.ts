@@ -35,6 +35,14 @@ interface NanoGptConfig {
 
 const DEFAULT_MAX_SEARCHES = 2;
 
+export type ParseProgressStage = 'identifying' | 'looking_up' | 'estimating';
+
+interface ParseFlowOptions {
+  searchApiKey?: string;
+  maxSearches?: number;
+  onProgress?: (stage: ParseProgressStage) => void;
+}
+
 async function callNanoGptJson<T>(
   config: NanoGptConfig,
   system: string,
@@ -113,6 +121,7 @@ async function parseMealFast(
   mealText: string,
   config: NanoGptConfig,
   context: ParsePromptContext,
+  onProgress?: (stage: ParseProgressStage) => void,
 ): Promise<ParseMealFlowResult> {
   const estimated = await callNanoGptJson<{ items: Array<Record<string, unknown>>; notes?: string }>(
     config,
@@ -123,6 +132,7 @@ async function parseMealFast(
   );
 
   const { items, notes } = finalizeItems(estimated);
+  onProgress?.('estimating');
   return { items, notes, research_used: false, searches_run: 0, parse_path: 'fast', research_available: true };
 }
 
@@ -131,8 +141,11 @@ async function parseMealResearch(
   mealText: string,
   config: NanoGptConfig,
   context: ParsePromptContext,
-  options?: { searchApiKey?: string; maxSearches?: number },
+  options?: ParseFlowOptions,
 ): Promise<ParseMealFlowResult> {
+  const onProgress = options?.onProgress;
+  onProgress?.('identifying');
+
   const interpreted = await callNanoGptJson<InterpretResult>(
     config,
     buildInterpretSystemPrompt(context),
@@ -154,6 +167,7 @@ async function parseMealResearch(
   const researchAvailable = Boolean(searchApiKey);
 
   if (searchApiKey && queries.length) {
+    onProgress?.('looking_up');
     const results = await runMealResearch(queries, searchApiKey, maxSearches);
     searchesRun = results.length;
     researchBlock = formatResearchForPrompt(results);
@@ -168,6 +182,7 @@ async function parseMealResearch(
   );
 
   const { items, notes } = finalizeItems(estimated);
+  onProgress?.('estimating');
   const researchNote = !researchAvailable && queries.length > 0
     ? 'UK web lookup is not configured — estimates use the model only.'
     : undefined;
@@ -187,11 +202,12 @@ export async function parseMealWithResearch(
   mealText: string,
   config: NanoGptConfig,
   context: ParsePromptContext = {},
-  options?: { searchApiKey?: string; maxSearches?: number },
+  options?: ParseFlowOptions,
 ): Promise<ParseMealFlowResult> {
+  const onProgress = options?.onProgress;
   if (shouldUseFastParse(mealText)) {
     try {
-      return await parseMealFast(mealText, config, context);
+      return await parseMealFast(mealText, config, context, onProgress);
     } catch {
       // Fall back to full research flow on fast-path failure.
     }

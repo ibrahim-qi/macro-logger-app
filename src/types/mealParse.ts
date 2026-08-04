@@ -36,3 +36,14 @@ export interface ParseMealRequest {
   mimeType?: string;
   action?: 'transcribe' | 'parse';
 }
+
+/** User-visible parse pipeline stages streamed from the edge function. */
+export type ParseProgressStage =
+  | 'transcribing'
+  | 'identifying'
+  | 'looking_up'
+  | 'estimating';
+
+export interface ParseProgressState {
+  current: ParseProgressStage;
+}

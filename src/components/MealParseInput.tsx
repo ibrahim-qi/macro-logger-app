@@ -9,7 +9,7 @@ import {
 } from 'react';
 import { useAudioRecorder } from '../hooks/useAudioRecorder';
 import { SahhaMark } from './SahhaBrand';
-import type { ParseMealResponse } from '../types/mealParse';
+import type { ParseMealResponse, ParseProgressStage } from '../types/mealParse';
 import { formatInvokeError, invokeParseMeal, invokeParseMealVoice } from '../utils/parseMeal';
 import { assertRecordingHasSpeech, normalizeAudioMimeType } from '../utils/transcriptValidation';
 import { hapticLight, hapticMedium } from '../utils/haptics';
@@ -28,6 +28,7 @@ interface MealParseInputProps {
   onParsed: (result: ParseMealResponse) => void;
   onParseStart?: (payload: ParseStartPayload) => void;
   onTranscript?: (transcript: string) => void;
+  onParseProgress?: (stage: ParseProgressStage) => void;
   onParseError?: (message: string) => void;
 }
 
@@ -43,6 +44,7 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
   onParsed,
   onParseStart,
   onTranscript,
+  onParseProgress,
   onParseError,
 }, ref) => {
   const [text, setText] = useState('');
@@ -172,6 +174,10 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
             setText(transcript);
             onTranscript?.(transcript);
           },
+          onProgress: (stage) => {
+            if (!isCurrentParse(generation)) return;
+            onParseProgress?.(stage);
+          },
         },
       );
       if (!isCurrentParse(generation)) return;
@@ -252,7 +258,7 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
           {isSupported && (
             <p key={voiceHint} className="sahha-voice__hint">
               {voiceHint === 'listening' && 'Listening…'}
-              {voiceHint === 'analysing' && 'Analysing your meal…'}
+              {voiceHint === 'analysing' && 'Processing…'}
               {voiceHint === 'idle' && 'Tap to speak'}
             </p>
           )}

@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import Modal from './Modal';
 import MacroLine from './MacroLine';
-import type { ParsedFoodItem, ParseMealResponse } from '../types/mealParse';
+import type { ParsedFoodItem, ParseMealResponse, ParseProgressState } from '../types/mealParse';
 import type { DayContext } from '../hooks/useDayContext';
 import { sumItemMacros } from '../utils/mealTotals';
 import { hapticLight, hapticSuccess } from '../utils/haptics';
@@ -21,6 +21,7 @@ interface MealParseReviewProps {
   loading?: boolean;
   parseMode?: ParseMode;
   transcript?: string | null;
+  parseProgress?: ParseProgressState | null;
   parseError?: string | null;
   result: ParseMealResponse | null;
   selectedDate: Date;
@@ -57,6 +58,7 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
   loading = false,
   parseMode = 'voice',
   transcript,
+  parseProgress,
   parseError,
   result,
   selectedDate,
@@ -99,8 +101,8 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
 
     if (result) {
       setContentReady(true);
-      const fadeTimer = window.setTimeout(() => setLoadingVisible(false), 100);
-      return () => window.clearTimeout(fadeTimer);
+      setLoadingVisible(false);
+      return;
     }
 
     setLoadingVisible(false);
@@ -399,7 +401,7 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
       onClose={handleDismiss}
       title={
         loadingVisible
-          ? getReviewLoadingTitle(displayTranscript)
+          ? getReviewLoadingTitle(displayTranscript, parseProgress?.current)
           : showParseError
             ? 'Could not parse meal'
             : 'Verify your meal'
@@ -416,6 +418,7 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
             <MealParseLoading
               mode={parseMode}
               transcript={displayTranscript}
+              progress={parseProgress}
               exiting={contentReady}
             />
           </div>

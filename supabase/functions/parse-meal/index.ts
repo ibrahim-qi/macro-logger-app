@@ -104,11 +104,13 @@ async function parseMealText(
   mealText: string,
   config: NanoGptConfig,
   context: ParsePromptContext,
+  onProgress?: (stage: 'identifying' | 'looking_up' | 'estimating') => void,
 ): Promise<ParseMealResponse> {
   const parsed = await parseMealWithResearch(
     mealText,
     { apiKey: config.apiKey, baseUrl: config.baseUrl, model: config.parseModel },
     context,
+    { onProgress },
   );
 
   const items = applySavedFoods(parsed.items, context.savedFoods ?? []);
@@ -165,6 +167,8 @@ function streamVoiceParse(
       };
 
       try {
+        send({ event: 'progress', stage: 'transcribing' });
+
         const savedNames = (context.savedFoods ?? []).map((food) => food.food_name);
         const sttPrompt = buildTranscriptionPrompt(savedNames);
         const transcript = await transcribeWithNanoGpt(
@@ -178,7 +182,12 @@ function streamVoiceParse(
 
         send({ event: 'transcript', transcript });
 
-        const result = await parseMealText(transcript, config, context);
+        const result = await parseMealText(
+          transcript,
+          config,
+          context,
+          (stage) => send({ event: 'progress', stage }),
+        );
         send({ event: 'result', ...result, transcript });
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to parse meal';
