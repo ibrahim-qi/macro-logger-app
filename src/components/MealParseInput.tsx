@@ -288,7 +288,7 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
           disabled={loading || isRecording || !text.trim()}
           className="btn-primary mt-3 w-full"
         >
-          {isProcessing ? getParseLoadingLabel('text', lastTranscript) : 'Log meal'}
+          {isProcessing ? getParseLoadingLabel() : 'Log meal'}
         </button>
       </div>
 

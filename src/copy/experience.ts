@@ -9,84 +9,32 @@ function withName(prefix: string, ctx: ExperienceContext): string {
 export const SAHHA_TAGLINE = 'Speak naturally. Review with confidence.' as const;
 
 /** Modal title while the review sheet is loading. */
-export function getReviewLoadingTitle(
-  transcript: string | null,
-  stage?: ParseProgressStage | null,
-): string {
-  return getParseLoadingHeadline(Boolean(transcript?.trim()), stage);
+export function getReviewLoadingTitle(): string {
+  return 'One moment…';
 }
 
 /** Short label for the parse footer button only. */
-export function getParseLoadingLabel(mode: 'voice' | 'text', transcript: string | null): string {
-  if (mode === 'voice' && !transcript?.trim()) return 'One moment…';
-  return transcript?.trim() ? 'Got it…' : 'One moment…';
+export function getParseLoadingLabel(): string {
+  return 'One moment…';
 }
 
-/** Calm sublabel during AI parse — builds trust without overclaiming research. */
-export function getParseLoadingSublabel(
-  mode: 'voice' | 'text',
-  transcript: string | null,
-  options?: { slow?: boolean },
-): string {
-  if (mode === 'voice' && !transcript?.trim()) {
-    if (options?.slow) return 'Still catching what you said';
-    return 'Catching what you said';
-  }
-  if (!transcript?.trim()) {
-    return 'Reading your meal';
-  }
-  if (options?.slow) {
-    return 'Still on it — bigger meals can take a few extra seconds';
-  }
-  return 'Putting your breakdown together';
-}
-
-/** Main headline inside the parse loading view — two calm phases, no pipeline jargon. */
-export function getParseLoadingHeadline(
-  hasTranscript: boolean,
-  stage?: ParseProgressStage | null,
-): string {
-  if (!hasTranscript) return 'One moment…';
-  if (stage === 'estimating') return 'Almost there';
-  return 'Got it';
-}
-
-/**
- * Optimistic progress fill — jumps forward when the transcript lands so the wait feels shorter.
- * Backend stages still drive updates; users never see step names.
- */
 export function getParseLoadingProgress(
   hasTranscript: boolean,
   stage?: ParseProgressStage | null,
 ): number {
   if (!hasTranscript) {
-    return stage === 'transcribing' ? 38 : 36;
+    return stage === 'transcribing' ? 32 : 28;
   }
   switch (stage) {
     case 'identifying':
-      return 62;
+      return 58;
     case 'looking_up':
-      return 74;
+      return 72;
     case 'estimating':
-      return 88;
+      return 86;
     default:
-      return 54;
+      return 48;
   }
-}
-
-/** Shown in review after parse when UK web lookup ran. */
-export function getParseResearchNote(response: {
-  research_used?: boolean;
-  parse_path?: 'fast' | 'research';
-  research_available?: boolean;
-}): string | null {
-  if (response.research_used) {
-    return 'Some items were checked against UK nutrition sources.';
-  }
-  if (response.parse_path === 'research' && response.research_available === false) {
-    return 'UK web lookup is not configured — double-check branded or vague items.';
-  }
-  return null;
 }
 
 export function getGreeting(ctx: ExperienceContext): string {

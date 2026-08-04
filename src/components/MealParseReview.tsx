@@ -8,7 +8,7 @@ import type { ParsedFoodItem, ParseMealResponse, ParseProgressState } from '../t
 import type { DayContext } from '../hooks/useDayContext';
 import { sumItemMacros } from '../utils/mealTotals';
 import { hapticLight, hapticSuccess } from '../utils/haptics';
-import { getParseLoadingLabel, getParseResearchNote, getReviewHint, getReviewLoadingTitle } from '../copy/experience';
+import { getParseLoadingLabel, getReviewHint, getReviewLoadingTitle } from '../copy/experience';
 import { useUserExperience } from '../context/UserExperienceContext';
 import { upsertSavedFoods } from '../utils/savedFoods';
 import { localDayBounds, createTimestampForDate } from '../utils/localDate';
@@ -338,8 +338,7 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
   };
 
   const displayTranscript = transcript ?? result?.transcript ?? null;
-  const loadingLabel = getParseLoadingLabel(parseMode, displayTranscript);
-  const researchNote = result ? getParseResearchNote(result) : null;
+  const loadingLabel = getParseLoadingLabel();
   const showParseError = Boolean(parseError) && !loadingVisible;
   const canRetryParse = Boolean(retryDraft.trim() && onRetry);
 
@@ -401,7 +400,7 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
       onClose={handleDismiss}
       title={
         loadingVisible
-          ? getReviewLoadingTitle(displayTranscript, parseProgress?.current)
+          ? getReviewLoadingTitle()
           : showParseError
             ? 'Could not parse meal'
             : 'Verify your meal'
@@ -454,20 +453,12 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
             </div>
           )}
 
-          {(displayTranscript || result?.notes) && (
+          {displayTranscript && (
             <div className="meal-review-context">
-              {displayTranscript && (
-                <p className="meal-review-context__said">
-                  <span className="section-label">You said</span>
-                  <span className="meal-review-context__text">{displayTranscript}</span>
-                </p>
-              )}
-              {result?.notes && (
-                <p className="meal-review-context__notes">{result.notes}</p>
-              )}
-              {researchNote && (
-                <p className="meal-review-context__notes">{researchNote}</p>
-              )}
+              <p className="meal-review-context__said">
+                <span className="section-label">You said</span>
+                <span className="meal-review-context__text">{displayTranscript}</span>
+              </p>
             </div>
           )}
 
@@ -485,9 +476,6 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
                 const isVerified = verified.has(item.id);
                 const isEditing = editingId === item.id;
                 const isMenuOpen = openMenuId === item.id;
-                const assumption = item.portion_assumption?.trim();
-                const sourceNote = item.source_note?.trim();
-                const showAssumption = !isVerified && Boolean(assumption || sourceNote);
                 const isUncertain = !isVerified && item.confidence === 'low';
 
                 return (
@@ -508,25 +496,6 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
                           carbs={item.carbs * qty}
                           fats={item.fats * qty}
                         />
-                        {item.confidence === 'low' && !isVerified && !showAssumption && (
-                          <span className="meal-review-row__hint">Rough estimate — check portion</span>
-                        )}
-                        {item.confidence === 'medium' && !isVerified && !showAssumption && (
-                          <span className="meal-review-row__hint">Estimated portion</span>
-                        )}
-                        {showAssumption && (
-                          <div className="meal-review-row__assumption">
-                            {assumption && (
-                              <>
-                                <p className="meal-review-row__assumption-label">Assumed</p>
-                                <p className="meal-review-row__assumption-text">{assumption}</p>
-                              </>
-                            )}
-                            {sourceNote && (
-                              <p className="meal-review-row__source">Source: {sourceNote}</p>
-                            )}
-                          </div>
-                        )}
                       </div>
                       <span className="meal-review-row__calories tabular-nums">{itemCalories} cal</span>
                     </div>
