@@ -1,78 +1,87 @@
 import React from 'react';
-import { Outlet, NavLink } from 'react-router-dom';
+import { Outlet, NavLink, useLocation, Link } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
+import { SahhaWordmark } from '../components/SahhaBrand';
 
 interface MainLayoutProps {
-  session: Session; // Keep session for potential header use?
+  session: Session;
   handleLogout: () => void;
 }
 
 const MainLayout: React.FC<MainLayoutProps> = ({ handleLogout }) => {
-  const navLinkClasses = ({ isActive }: { isActive: boolean }): string => 
-    `flex flex-col items-center justify-center flex-1 py-4 text-sm font-medium transition-colors ${
-      isActive 
-        ? 'text-slate-700' 
-        : 'text-stone-500 hover:text-slate-700'
-    }`;
+  const location = useLocation();
+  const isLog = location.pathname === '/log';
+  const isToday = location.pathname === '/';
+  const isStats = location.pathname === '/summary';
 
   return (
-    <div className="flex flex-col min-h-screen bg-stone-50">
-      {/* Enhanced Header */}
-      <header className="border-b border-slate-100 px-6 py-4 bg-stone-50 shadow-sm">
-        <div className="max-w-sm mx-auto flex justify-between items-center">
-          <h1 className="text-xl font-semibold text-slate-700 tracking-tight">Macro Logger</h1>
-          <button 
+    <div className="app-shell app-bg">
+      <header className="app-bar safe-x">
+        <div className="app-container app-bar__inner app-bar__inner--centered">
+          <div className="app-bar__side" aria-hidden="true" />
+
+          <Link to="/" className="app-bar__center" aria-label="Sahha home">
+            <SahhaWordmark size="header" />
+          </Link>
+
+          <button
+            type="button"
             onClick={handleLogout}
-            className="text-stone-400 hover:text-slate-700 transition-colors p-1"
-            aria-label="Logout"
+            className="app-bar__logout"
+            aria-label="Sign out"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
             </svg>
           </button>
         </div>
       </header>
 
-      {/* Clean Main Content */}
-      <main className="flex-grow px-6 py-8 pb-24">
-        <div className="max-w-sm mx-auto">
+      <main className={`app-shell__main safe-x ${isLog ? 'app-shell__main--log' : ''}`}>
+        <div className="app-container animate-fade-in">
           <Outlet />
         </div>
       </main>
 
-      {/* Enhanced Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 shadow-lg">
-        <div className="max-w-sm mx-auto flex">
-          <NavLink to="/" className={navLinkClasses} end>
-            <div className="w-6 h-6 mb-1">
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+      <nav className="dock" aria-label="Main">
+        <div className="app-container">
+          <div className="dock__inner">
+            <NavLink
+              to="/"
+              end
+              className={`dock__link ${isToday ? 'dock__link--active' : ''}`}
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
               </svg>
+              Today
+            </NavLink>
+
+            <div className="dock__fab-wrap">
+              <NavLink to="/log" aria-label="Log meal">
+                <div className={`dock__fab ${isLog ? 'dock__fab--active' : ''}`}>
+                  <svg className="w-7 h-7 text-[var(--color-bg)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.25} d="M12 4v16m8-8H4" />
+                  </svg>
+                </div>
+                <span className={`dock__fab-label ${isLog ? 'dock__fab-label--active' : ''}`}>Log</span>
+              </NavLink>
             </div>
-            <span>Add</span>
-          </NavLink>
-          
-          <NavLink to="/today" className={navLinkClasses}>
-            <div className="w-6 h-6 mb-1">
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+
+            <NavLink
+              to="/summary"
+              className={`dock__link ${isStats ? 'dock__link--active' : ''}`}
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
               </svg>
-            </div>
-            <span>Today</span>
-          </NavLink>
-          
-          <NavLink to="/summary" className={navLinkClasses}>
-            <div className="w-6 h-6 mb-1">
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-            </div>
-            <span>Stats</span>
-          </NavLink>
+              Trends
+            </NavLink>
+          </div>
         </div>
       </nav>
     </div>
   );
 };
 
-export default MainLayout; 
+export default MainLayout;

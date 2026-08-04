@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 
-// Interface for the props
 interface FoodEntryData {
   food_name: string;
   calories: number;
@@ -19,9 +18,8 @@ interface EditEntryFormProps {
     carbs: number | null;
     fats: number | null;
     quantity: number;
-    // We don't need created_at or user_id for the form itself, but they are part of the original entry
   };
-  onSave: (updatedData: FoodEntryData & { id: number }) => Promise<void>; // onSave will handle the actual DB update
+  onSave: (updatedData: FoodEntryData & { id: number }) => Promise<void>;
   onCancel: () => void;
 }
 
@@ -35,7 +33,6 @@ const EditEntryForm: React.FC<EditEntryFormProps> = ({ entry, onSave, onCancel }
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Effect to reset form if the entry prop changes (e.g. user opens edit for another item while modal is somehow kept open)
   useEffect(() => {
     setFoodName(entry.food_name);
     setCalories(entry.calories.toString());
@@ -43,7 +40,7 @@ const EditEntryForm: React.FC<EditEntryFormProps> = ({ entry, onSave, onCancel }
     setCarbs(entry.carbs?.toString() || '');
     setFats(entry.fats?.toString() || '');
     setQuantity(entry.quantity.toString());
-    setErrorMessage(null); // Clear any previous error messages
+    setErrorMessage(null);
   }, [entry]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -65,9 +62,9 @@ const EditEntryForm: React.FC<EditEntryFormProps> = ({ entry, onSave, onCancel }
       return;
     }
     if (!foodName.trim()) {
-        setErrorMessage('Food name cannot be empty.');
-        setIsLoading(false);
-        return;
+      setErrorMessage('Food name cannot be empty.');
+      setIsLoading(false);
+      return;
     }
 
     const updatedData: FoodEntryData & { id: number } = {
@@ -82,120 +79,107 @@ const EditEntryForm: React.FC<EditEntryFormProps> = ({ entry, onSave, onCancel }
 
     try {
       await onSave(updatedData);
-      // onSave prop is expected to close the modal on success
-    } catch (error: any) {
-      console.error("Error saving entry:", error);
-      setErrorMessage(error.message || 'Failed to save entry. Please try again.');
+    } catch (error: unknown) {
+      console.error('Error saving entry:', error);
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to save entry. Please try again.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const inputClass = "mt-1 block w-full px-3 py-2 bg-white border border-stone-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-slate-500 focus:border-slate-500 sm:text-sm transition-colors";
-  const labelClass = "block text-sm font-medium text-stone-700 mb-0.5";
-
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
-      {errorMessage && (
-        <div className="p-3 mb-2 border border-red-300 bg-red-100 text-red-800 rounded-md text-sm">
-          <p>{errorMessage}</p>
-        </div>
-      )}
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {errorMessage && <div className="alert-error">{errorMessage}</div>}
+
       <div>
-        <label htmlFor="foodName" className={labelClass}>Food Name</label>
+        <label htmlFor="foodName" className="form-label">Food name</label>
         <input
           type="text"
           id="foodName"
           value={foodName}
           onChange={(e) => setFoodName(e.target.value)}
-          className={inputClass}
+          className="input-premium"
           required
         />
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:gap-4">
+
+      <div className="grid grid-cols-2 gap-3">
         <div>
-          <label htmlFor="quantity" className={labelClass}>Quantity</label>
+          <label htmlFor="quantity" className="form-label">Quantity</label>
           <input
             type="number"
             id="quantity"
             value={quantity}
             onChange={(e) => setQuantity(e.target.value)}
-            className={inputClass}
+            className="input-premium"
             min="0.01"
             step="0.01"
             required
           />
         </div>
         <div>
-          <label htmlFor="calories" className={labelClass}>Calories (per one quantity)</label>
+          <label htmlFor="calories" className="form-label text-macro-calories">Calories (per qty)</label>
           <input
             type="number"
             id="calories"
             value={calories}
             onChange={(e) => setCalories(e.target.value)}
-            className={inputClass}
+            className="input-premium"
             min="0"
             required
           />
         </div>
       </div>
-      <div className="grid grid-cols-3 gap-3 sm:gap-4">
+
+      <div className="grid grid-cols-3 gap-3">
         <div>
-          <label htmlFor="protein" className={labelClass}>Protein (g)</label>
+          <label htmlFor="protein" className="form-label-sm text-macro-protein">Protein (g)</label>
           <input
             type="number"
             id="protein"
             value={protein}
             onChange={(e) => setProtein(e.target.value)}
-            className={inputClass}
+            className="input-premium"
             min="0"
             step="0.1"
           />
         </div>
         <div>
-          <label htmlFor="carbs" className={labelClass}>Carbs (g)</label>
+          <label htmlFor="carbs" className="form-label-sm text-macro-carbs">Carbs (g)</label>
           <input
             type="number"
             id="carbs"
             value={carbs}
             onChange={(e) => setCarbs(e.target.value)}
-            className={inputClass}
+            className="input-premium"
             min="0"
             step="0.1"
           />
         </div>
         <div>
-          <label htmlFor="fats" className={labelClass}>Fats (g)</label>
+          <label htmlFor="fats" className="form-label-sm text-macro-fats">Fats (g)</label>
           <input
             type="number"
             id="fats"
             value={fats}
             onChange={(e) => setFats(e.target.value)}
-            className={inputClass}
+            className="input-premium"
             min="0"
             step="0.1"
           />
         </div>
       </div>
-      <div className="flex justify-end space-x-3 pt-3">
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={isLoading}
-          className="px-4 py-2 text-sm font-medium text-stone-700 bg-stone-100 hover:bg-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-stone-400 disabled:opacity-60 transition-colors"
-        >
+
+      <div className="flex justify-end gap-3 pt-2">
+        <button type="button" onClick={onCancel} disabled={isLoading} className="btn-secondary">
           Cancel
         </button>
-        <button
-          type="submit"
-          disabled={isLoading}
-          className="px-4 py-2 text-sm font-medium text-white bg-slate-700 hover:bg-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 disabled:opacity-60 transition-colors"
-        >
-          {isLoading ? 'Saving...' : 'Save Changes'}
+        <button type="submit" disabled={isLoading} className="btn-primary !w-auto px-5">
+          {isLoading ? 'Saving…' : 'Save changes'}
         </button>
       </div>
     </form>
   );
 };
 
-export default EditEntryForm; 
+export default EditEntryForm;

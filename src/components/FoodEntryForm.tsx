@@ -1,10 +1,16 @@
-import React, { useState, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, forwardRef, useImperativeHandle, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import type { Session } from '@supabase/supabase-js';
-import type { SavedFoodItem } from './SavedFoodManager';
+import { formatLocalDateKey } from '../utils/localDate';
 
 interface FoodEntryFormProps {
   session: Session;
+  compact?: boolean;
+  selectedDate?: Date;
+  onDateChange?: (date: Date) => void;
+  seedFields?: FoodEntryFields | null;
+  onSeedApplied?: () => void;
+  hideDatePicker?: boolean;
 }
 
 interface FormData {
@@ -16,65 +22,75 @@ interface FormData {
   quantity: number;
 }
 
-export interface FoodEntryFormHandle {
-  setFields: (food: SavedFoodItem) => void;
+export interface FoodEntryFields {
+  food_name: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fats: number;
+  quantity?: number;
 }
 
-const FoodEntryForm = forwardRef<FoodEntryFormHandle, FoodEntryFormProps>(({ session }, ref) => {
+export interface FoodEntryFormHandle {
+  setFields: (food: FoodEntryFields) => void;
+  getSelectedDate: () => Date;
+}
+
+const labelClass = 'block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2';
+const inputClass = 'input-premium text-base py-2.5';
+
+const FoodEntryForm = forwardRef<FoodEntryFormHandle, FoodEntryFormProps>(({
+  session,
+  compact = false,
+  selectedDate: controlledDate,
+  onDateChange,
+  seedFields,
+  onSeedApplied,
+  hideDatePicker = false,
+}, ref) => {
   const [formData, setFormData] = useState<FormData>({
-    food_name: '',
-    calories: '',
-    protein: '',
-    carbs: '',
-    fats: '',
-    quantity: 1,
+    food_name: '', calories: '', protein: '', carbs: '', fats: '', quantity: 1,
   });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-
-  // Date selection state
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date()); // Default to today
+  const [internalDate, setInternalDate] = useState<Date>(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
 
-  // Helper functions for date handling
+  const selectedDate = controlledDate ?? internalDate;
+  const setSelectedDate = (date: Date) => {
+    if (onDateChange) onDateChange(date);
+    else setInternalDate(date);
+  };
+
+  useEffect(() => {
+    if (!seedFields) return;
+    setFormData({
+      food_name: seedFields.food_name,
+      calories: seedFields.calories,
+      protein: seedFields.protein,
+      carbs: seedFields.carbs,
+      fats: seedFields.fats,
+      quantity: seedFields.quantity ?? 1,
+    });
+    onSeedApplied?.();
+  }, [seedFields]);
+
   const formatDateForDisplay = (date: Date): string => {
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
-    
-    if (date.toDateString() === today.toDateString()) {
-      return 'Today';
-    } else if (date.toDateString() === yesterday.toDateString()) {
-      return 'Yesterday';
-    } else {
-      return date.toLocaleDateString();
-    }
+    if (date.toDateString() === today.toDateString()) return 'Today';
+    if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+    return date.toLocaleDateString();
   };
 
-  const formatDateForInput = (date: Date): string => {
-    return date.toISOString().split('T')[0];
-  };
+  const formatDateForInput = (date: Date): string => formatLocalDateKey(date);
 
   const createTimestampForDate = (date: Date): string => {
-    // Create a timestamp for the selected date at the current time
     const now = new Date();
-    const selectedDateTime = new Date(date);
-    selectedDateTime.setHours(now.getHours());
-    selectedDateTime.setMinutes(now.getMinutes());
-    selectedDateTime.setSeconds(now.getSeconds());
-    selectedDateTime.setMilliseconds(now.getMilliseconds());
-    
-    return selectedDateTime.toISOString();
-  };
-
-  const setToday = () => {
-    setSelectedDate(new Date());
-  };
-
-  const setYesterday = () => {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    setSelectedDate(yesterday);
+    const d = new Date(date);
+    d.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+    return d.toISOString();
   };
 
   useImperativeHandle(ref, () => ({
@@ -85,15 +101,16 @@ const FoodEntryForm = forwardRef<FoodEntryFormHandle, FoodEntryFormProps>(({ ses
         protein: food.protein,
         carbs: food.carbs,
         fats: food.fats,
-        quantity: 1,
+        quantity: food.quantity ?? 1,
       });
-    }
+    },
+    getSelectedDate: () => selectedDate,
   }));
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type } = e.target;
-    setFormData((prevData) => ({
-      ...prevData,
+    setFormData((prev) => ({
+      ...prev,
       [name]: type === 'number' ? (value === '' ? '' : Number(value)) : value,
     }));
   };
@@ -104,46 +121,31 @@ const FoodEntryForm = forwardRef<FoodEntryFormHandle, FoodEntryFormProps>(({ ses
     setMessage(null);
 
     if (!formData.food_name || formData.calories === '' || isNaN(Number(formData.calories))) {
-        setMessage('Please enter a food name and valid calorie amount.');
-        setLoading(false);
-        return;
+      setMessage('Please enter a food name and valid calorie amount.');
+      setLoading(false);
+      return;
     }
 
-    const qty = Number(formData.quantity) || 1;
-
-    const entryData = {
+    try {
+      const { error } = await supabase.from('food_entries').insert([{
         user_id: session.user.id,
         food_name: formData.food_name,
         calories: Number(formData.calories) || 0,
         protein: Number(formData.protein) || 0,
         carbs: Number(formData.carbs) || 0,
         fats: Number(formData.fats) || 0,
-        quantity: qty,
-        created_at: createTimestampForDate(selectedDate), // Use selected date instead of database default
-    };
-
-    try {
-      const { error } = await supabase
-        .from('food_entries')
-        .insert([entryData]);
-
+        quantity: Number(formData.quantity) || 1,
+        created_at: createTimestampForDate(selectedDate),
+      }]);
       if (error) throw error;
-
-      setMessage('Food entry added successfully!');
-      setFormData({
-        food_name: '',
-        calories: '',
-        protein: '',
-        carbs: '',
-        fats: '',
-        quantity: 1,
-      });
-      // Reset date to today after successful submission
-      setSelectedDate(new Date());
+      setMessage('Entry added!');
+      setFormData({ food_name: '', calories: '', protein: '', carbs: '', fats: '', quantity: 1 });
+      if (!controlledDate) {
+        setInternalDate(new Date());
+      }
       setShowDatePicker(false);
-    } catch (error: any) {
-      console.error('Error inserting data:', error);
-      setMessage(`Error adding entry: ${error.message}`);
+    } catch (error: unknown) {
+      setMessage(`Error: ${error instanceof Error ? error.message : 'Failed to save'}`);
     } finally {
       setLoading(false);
       setTimeout(() => setMessage(null), 5000);
@@ -152,307 +154,106 @@ const FoodEntryForm = forwardRef<FoodEntryFormHandle, FoodEntryFormProps>(({ ses
 
   return (
     <>
-      <div>
-        {/* Minimal Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-xl font-medium text-slate-700">Add Entry</h1>
-            <p className="text-sm text-stone-500 mt-1">Log your food</p>
+      <div className={compact ? 'pt-4' : ''}>
+        {!compact && (
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="text-xl font-bold text-white">Manual entry</h1>
+              <p className="text-sm text-zinc-500 mt-0.5">Log food yourself</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowDatePicker(true)}
+              className="btn-ghost text-sm"
+            >
+              {formatDateForDisplay(selectedDate)}
+            </button>
           </div>
-          
-          {/* Clean Date Badge */}
-          <button
-            type="button"
-            onClick={() => setShowDatePicker(true)}
-            className="flex items-center space-x-2 px-3 py-2 bg-stone-100 hover:bg-stone-200 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-stone-300"
-          >
-            <span className="text-sm text-stone-700">{formatDateForDisplay(selectedDate)}</span>
-            <svg className="w-4 h-4 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
+        )}
+
+        {compact && !hideDatePicker && (
+          <div className="flex justify-end mb-4">
+            <button type="button" onClick={() => setShowDatePicker(true)} className="btn-ghost text-xs py-1.5">
+              {formatDateForDisplay(selectedDate)}
+            </button>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label htmlFor="food_name" className={labelClass}>Food name</label>
+            <input type="text" id="food_name" name="food_name" value={formData.food_name} onChange={handleChange} required placeholder="Chicken breast, rice…" className={inputClass} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="quantity" className={labelClass}>Qty</label>
+              <input type="number" id="quantity" name="quantity" value={formData.quantity} onChange={handleChange} required min="0.01" step="0.01" inputMode="decimal" className={inputClass} />
+            </div>
+            <div>
+              <label htmlFor="calories" className={labelClass}>Calories</label>
+              <input type="number" id="calories" name="calories" value={formData.calories} onChange={handleChange} required min="0" inputMode="numeric" placeholder="200" className={inputClass} />
+            </div>
+          </div>
+
+          <div>
+            <p className={labelClass}>Macros <span className="normal-case tracking-normal font-normal text-zinc-600">(per serving)</span></p>
+            <div className="grid grid-cols-3 gap-2">
+              <input type="number" id="protein" name="protein" value={formData.protein} onChange={handleChange} min="0" step="0.1" placeholder="P" aria-label="Protein" className={inputClass} />
+              <input type="number" id="carbs" name="carbs" value={formData.carbs} onChange={handleChange} min="0" step="0.1" placeholder="C" aria-label="Carbs" className={inputClass} />
+              <input type="number" id="fats" name="fats" value={formData.fats} onChange={handleChange} min="0" step="0.1" placeholder="F" aria-label="Fats" className={inputClass} />
+            </div>
+          </div>
+
+          <button type="submit" disabled={loading} className="btn-primary">
+            {loading ? 'Saving…' : 'Add entry'}
           </button>
-        </div>
+        </form>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            
-            {/* Basic Info Card */}
-            <div className="bg-white rounded-xl shadow-sm border border-stone-100 p-6">
-              <div className="space-y-6">
-                {/* Food Name */}
-                <div>
-                  <label htmlFor="food_name" className="block text-sm font-medium text-stone-900 mb-2">
-                    Food Name
-                  </label>
-                  <input
-                    type="text"
-                    id="food_name"
-                    name="food_name"
-                    value={formData.food_name}
-                    onChange={handleChange}
-                    required
-                    placeholder="Chicken breast, apple, rice..."
-                    className="w-full px-0 py-3 text-lg bg-transparent border-0 border-b border-stone-200 focus:outline-none focus:border-slate-700 focus:ring-0 placeholder-stone-400 transition-colors"
-                  />
-                </div>
-
-                {/* Quantity and Calories */}
-                <div className="grid grid-cols-2 gap-8">
-                  <div>
-                    <label htmlFor="quantity" className="block text-sm font-medium text-stone-900 mb-2">
-                      Quantity
-                    </label>
-                    <input
-                      type="number"
-                      id="quantity"
-                      name="quantity"
-                      value={formData.quantity}
-                      onChange={handleChange}
-                      required
-                      min="0.01"
-                      step="0.01"
-                      inputMode="decimal"
-                      placeholder="1.5"
-                      className="w-full px-0 py-3 text-lg bg-transparent border-0 border-b border-stone-200 focus:outline-none focus:border-slate-700 focus:ring-0 placeholder-stone-400 transition-colors"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label htmlFor="calories" className="block text-sm font-medium text-stone-900 mb-2">
-                      Calories
-                    </label>
-                    <input
-                      type="number"
-                      id="calories"
-                      name="calories"
-                      value={formData.calories}
-                      onChange={handleChange}
-                      required
-                      min="0"
-                      inputMode="numeric"
-                      placeholder="200"
-                      className="w-full px-0 py-3 text-lg bg-transparent border-0 border-b border-stone-200 focus:outline-none focus:border-slate-700 focus:ring-0 placeholder-stone-400 transition-colors"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Macros Card */}
-            <div className="bg-white rounded-xl shadow-sm border border-stone-100 p-6">
-              <div className="mb-4">
-                <h3 className="text-sm font-medium text-stone-900">Macros</h3>
-                <p className="text-xs text-stone-500 mt-1">Optional, per serving</p>
-              </div>
-              
-              <div className="grid grid-cols-3 gap-6">
-                <div>
-                  <label htmlFor="protein" className="block text-xs text-stone-600 mb-2">
-                    Protein (g)
-                  </label>
-                  <input
-                    type="number"
-                    id="protein"
-                    name="protein"
-                    value={formData.protein}
-                    onChange={handleChange}
-                    min="0"
-                    step="0.1"
-                    inputMode="decimal"
-                    placeholder="25"
-                    className="w-full px-0 py-2 text-base bg-transparent border-0 border-b border-stone-200 focus:outline-none focus:border-slate-700 focus:ring-0 placeholder-stone-400 transition-colors"
-                  />
-                </div>
-                
-                <div>
-                  <label htmlFor="carbs" className="block text-xs text-stone-600 mb-2">
-                    Carbs (g)
-                  </label>
-                  <input
-                    type="number"
-                    id="carbs"
-                    name="carbs"
-                    value={formData.carbs}
-                    onChange={handleChange}
-                    min="0"
-                    step="0.1"
-                    inputMode="decimal"
-                    placeholder="30"
-                    className="w-full px-0 py-2 text-base bg-transparent border-0 border-b border-stone-200 focus:outline-none focus:border-slate-700 focus:ring-0 placeholder-stone-400 transition-colors"
-                  />
-                </div>
-                
-                <div>
-                  <label htmlFor="fats" className="block text-xs text-stone-600 mb-2">
-                    Fats (g)
-                  </label>
-                  <input
-                    type="number"
-                    id="fats"
-                    name="fats"
-                    value={formData.fats}
-                    onChange={handleChange}
-                    min="0"
-                    step="0.1"
-                    inputMode="decimal"
-                    placeholder="15"
-                    className="w-full px-0 py-2 text-base bg-transparent border-0 border-b border-stone-200 focus:outline-none focus:border-slate-700 focus:ring-0 placeholder-stone-400 transition-colors"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Submit Button */}
-            <div className="pt-2">
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-4 bg-slate-700 hover:bg-slate-800 disabled:bg-stone-300 text-white font-medium text-base rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-700 focus:ring-offset-2 transition-colors shadow-sm"
-              >
-                {loading ? 'Adding...' : 'Add Entry'}
-              </button>
-            </div>
-          </form>
-
-        {/* Success/Error Message */}
-      {message && (
-          <div className={`mt-6 p-4 rounded-xl border ${
-            message.toLowerCase().startsWith('error') || message.toLowerCase().includes('failed') || message.toLowerCase().includes('please enter')
-              ? 'bg-red-50 border-red-200 text-red-800' 
-              : 'bg-slate-50 border-slate-200 text-slate-800'
-          }`}>
-            <p className="text-center text-sm font-medium">{message}</p>
+        {message && (
+          <div className={`mt-4 ${message.toLowerCase().includes('error') || message.includes('Please') ? 'alert-error' : 'alert-success'}`}>
+            {message}
           </div>
         )}
       </div>
 
-    {/* Mobile-First Date Selection Modal */}
-    {showDatePicker && (
-      <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-        {/* Backdrop */}
-        <div 
-          className="absolute inset-0 bg-black bg-opacity-50 transition-opacity"
-          onClick={() => setShowDatePicker(false)}
-        />
-        
-        {/* Modal Content */}
-        <div className="relative bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-md mx-4 mb-0 sm:mb-8 shadow-2xl transform transition-transform">
-          {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-900">Select Date</h3>
-            <button
-              type="button"
-              onClick={() => setShowDatePicker(false)}
-              className="p-2 rounded-full hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-400"
-            >
-              <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-
-          {/* Date Options */}
-          <div className="p-4 space-y-3">
-            {/* Quick Date Buttons */}
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => { setToday(); setShowDatePicker(false); }}
-                className={`relative p-5 rounded-2xl text-center transition-all duration-200 border-2 ${
-                  formatDateForDisplay(selectedDate) === 'Today' 
-                    ? 'bg-slate-700 border-slate-700 text-white shadow-xl scale-[1.02]' 
-                    : 'bg-white border-stone-200 text-stone-700 hover:border-slate-300 hover:shadow-md active:bg-stone-50'
-                }`}
-              >
-                <div className={`w-8 h-8 mx-auto mb-3 rounded-full flex items-center justify-center ${
-                  formatDateForDisplay(selectedDate) === 'Today'
-                    ? 'bg-white bg-opacity-20'
-                    : 'bg-green-100'
-                }`}>
-                  <div className={`w-3 h-3 rounded-full ${
-                    formatDateForDisplay(selectedDate) === 'Today'
-                      ? 'bg-white'
-                      : 'bg-green-500'
-                  }`}></div>
-                </div>
-                <div className="font-semibold text-base">Today</div>
-                <div className="text-xs opacity-75 mt-1">{new Date().toLocaleDateString()}</div>
-              </button>
-              
-              <button
-                type="button"
-                onClick={() => { setYesterday(); setShowDatePicker(false); }}
-                className={`relative p-5 rounded-2xl text-center transition-all duration-200 border-2 ${
-                  formatDateForDisplay(selectedDate) === 'Yesterday' 
-                    ? 'bg-slate-700 border-slate-700 text-white shadow-xl scale-[1.02]' 
-                    : 'bg-white border-stone-200 text-stone-700 hover:border-slate-300 hover:shadow-md active:bg-stone-50'
-                }`}
-              >
-                <div className={`w-8 h-8 mx-auto mb-3 rounded-full flex items-center justify-center ${
-                  formatDateForDisplay(selectedDate) === 'Yesterday'
-                    ? 'bg-white bg-opacity-20'
-                    : 'bg-amber-100'
-                }`}>
-                  <div className={`w-3 h-3 rounded-full ${
-                    formatDateForDisplay(selectedDate) === 'Yesterday'
-                      ? 'bg-white'
-                      : 'bg-amber-500'
-                  }`}></div>
-                </div>
-                <div className="font-semibold text-base">Yesterday</div>
-                <div className="text-xs opacity-75 mt-1">{(() => {
-                  const yesterday = new Date();
-                  yesterday.setDate(yesterday.getDate() - 1);
-                  return yesterday.toLocaleDateString();
-                })()}</div>
-              </button>
+      {showDatePicker && (
+        <div className="modal-overlay safe-x z-[110]" onClick={() => setShowDatePicker(false)}>
+          <div className="modal-panel card-elevated p-5" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-white mb-4">Select date</h3>
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              {(['Today', 'Yesterday'] as const).map((label) => {
+                const isActive = formatDateForDisplay(selectedDate) === label;
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => {
+                      if (label === 'Today') setSelectedDate(new Date());
+                      else { const y = new Date(); y.setDate(y.getDate() - 1); setSelectedDate(y); }
+                      setShowDatePicker(false);
+                    }}
+                    className={`p-4 rounded-2xl border text-center transition-all ${
+                      isActive ? 'border-[rgba(56,189,248,0.5)] bg-[rgba(56,189,248,0.1)] text-accent' : 'border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-2)]'
+                    }`}
+                  >
+                    <div className="font-semibold">{label}</div>
+                  </button>
+                );
+              })}
             </div>
-
-            {/* Custom Date Picker */}
-            <div className="pt-4 border-t border-gray-200">
-              <label className="block text-sm font-medium text-gray-700 mb-3">
-                Choose a different date:
-              </label>
-              <div className="relative">
-                <input
-                  type="date"
-                  value={formatDateForInput(selectedDate)}
-                  onChange={(e) => {
-                    const newDate = new Date(e.target.value + 'T00:00:00');
-                    setSelectedDate(newDate);
-                  }}
-                  className="w-full p-4 border-2 border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-slate-500 text-base bg-white hover:border-slate-300 transition-colors"
-                />
-                <div className="absolute right-4 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                </div>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex space-x-3 pt-6">
-              <button
-                type="button"
-                onClick={() => setShowDatePicker(false)}
-                className="flex-1 py-3 px-4 border-2 border-gray-200 rounded-xl text-gray-700 font-semibold hover:bg-gray-50 hover:border-gray-300 transition-all focus:outline-none focus:ring-2 focus:ring-gray-400 active:scale-[0.98]"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowDatePicker(false)}
-                className="flex-1 py-3 px-4 bg-slate-700 text-white rounded-xl font-semibold hover:bg-slate-800 transition-all focus:outline-none focus:ring-2 focus:ring-slate-400 shadow-lg hover:shadow-xl active:scale-[0.98]"
-              >
-                Done
-              </button>
-            </div>
+            <input
+              type="date"
+              value={formatDateForInput(selectedDate)}
+              onChange={(e) => setSelectedDate(new Date(e.target.value + 'T00:00:00'))}
+              className="input-premium mb-4"
+            />
+            <button type="button" onClick={() => setShowDatePicker(false)} className="btn-primary">Done</button>
           </div>
         </div>
-      </div>
-    )}
+      )}
     </>
   );
 });
 
-export default FoodEntryForm; 
+export default FoodEntryForm;

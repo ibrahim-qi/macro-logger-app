@@ -4,6 +4,7 @@ A simple web application designed to help track daily calories and macronutrient
 
 ## Features
 
+*   **AI Meal Logging:** Speak or type what you ate; AI estimates macros and portions. Review and confirm before saving.
 *   **Food Entry:** Manually input food items with their name, calories, protein, carbs, fats, and quantity.
 *   **Daily Log:** View a list of all food entries for the current day or navigate to previous/next days.
 *   **Daily Totals:** See a running total of calories and macros for the selected day on the "Today" page.
@@ -116,6 +117,68 @@ This app is deployed on [Vercel](https://vercel.com). Connect the GitHub reposit
 *   **Environment Variables:** `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
 
 After deploying, add your Vercel site URL to Supabase Auth redirect URLs (Authentication → URL Configuration).
+
+## AI Meal Parsing (NanoGPT + Supabase Edge Function)
+
+The Add page parses natural-language meal descriptions via the `parse-meal` Edge Function, powered by [NanoGPT](https://nano-gpt.com).
+
+**Flow:** speak or type → NanoGPT Whisper (`Whisper-Large-V3`) → NanoGPT Gemini Flash (`google/gemini-3.5-flash`) → review → save.
+
+### 1. Create a NanoGPT account
+
+1. Go to [nano-gpt.com](https://nano-gpt.com) and sign in.
+2. Add prepaid balance (from **$0.10** with crypto, or **$1** with card on first deposit).
+3. Open **API settings** and create an API key: [nano-gpt.com/api](https://nano-gpt.com/api).
+
+Keep the key server-side only — never put it in Vercel `VITE_*` vars or frontend code.
+
+### 2. Set Supabase secrets
+
+In **Supabase Dashboard → Project Settings → Edge Functions → Secrets** (project `mpecczwugkzvimxtgstg`), add:
+
+| Secret | Value | Required |
+|---|---|---|
+| `NANOGPT_API_KEY` | Your NanoGPT API key | Yes |
+| `NANOGPT_STT_MODEL` | `Whisper-Large-V3` | Optional (default) |
+| `NANOGPT_PARSE_MODEL` | `google/gemini-3.5-flash` | Optional (default) |
+
+Or via CLI (after linking the project):
+
+```bash
+supabase secrets set NANOGPT_API_KEY=your_nanogpt_api_key
+supabase secrets set NANOGPT_STT_MODEL=Whisper-Large-V3
+supabase secrets set NANOGPT_PARSE_MODEL=google/gemini-3.5-flash
+```
+
+**Optional upgrades** (change secrets only, no code deploy needed):
+
+| Use case | STT model | Parse model |
+|---|---|---|
+| Default (recommended) | `Whisper-Large-V3` | `google/gemini-3.5-flash` |
+| Better transcription | `gpt-4o-mini-transcribe-2025-12-15` | same |
+| Better macro estimates | same | `google/gemini-3.6-flash` |
+
+### 3. Deploy the Edge Function
+
+Install the [Supabase CLI](https://supabase.com/docs/guides/cli), link your project, then:
+
+```bash
+supabase functions deploy parse-meal
+```
+
+### 4. Test
+
+1. Run the app (`npm run dev`) or use your deployed Vercel URL.
+2. On the **Add** page, tap the mic or type a meal.
+3. Review parsed items → **Log**.
+
+Typical cost is well under **$0.001 per meal log**.
+
+### Voice on iPhone PWA
+
+- **In-app mic button:** records audio → NanoGPT Whisper (works in installed PWAs).
+- **Keyboard microphone:** tap the text field and use iOS dictation — skips STT cost entirely.
+- Web Speech API is not used because it fails in standalone iOS PWAs.
 
 ## PWA Icons & Manifest
 

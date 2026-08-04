@@ -98,10 +98,10 @@ const MacroGoalsCard: React.FC<MacroGoalsCardProps> = ({
 
   if (loading) {
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-stone-100 p-6 mb-6">
+      <div className="card-elevated p-6 mb-6">
         <div className="text-center py-8">
-          <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-slate-700"></div>
-          <p className="text-sm text-stone-500 mt-2">Loading goals...</p>
+          <div className="spinner mx-auto mb-3" />
+          <p className="text-sm text-[var(--color-text-muted)]">Loading goals…</p>
         </div>
       </div>
     );
@@ -109,18 +109,15 @@ const MacroGoalsCard: React.FC<MacroGoalsCardProps> = ({
 
   if (error || !userGoals) {
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-stone-100 p-6 mb-6">
+      <div className="card-elevated p-6 mb-6">
         <div className="text-center py-8">
-          <div className="text-stone-400 mb-4">
+          <div className="stats-empty__icon mb-3">
             <svg className="w-8 h-8 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
-          <p className="text-sm text-stone-500 mb-3">Unable to load macro goals</p>
-          <button
-            onClick={fetchUserGoals}
-            className="text-xs text-slate-700 hover:text-slate-800 font-medium"
-          >
+          <p className="text-sm text-[var(--color-text-muted)] mb-3">Unable to load macro goals</p>
+          <button type="button" onClick={fetchUserGoals} className="link-accent text-xs">
             Try again
           </button>
         </div>
@@ -131,22 +128,22 @@ const MacroGoalsCard: React.FC<MacroGoalsCardProps> = ({
   const isToday = selectedDate.toDateString() === new Date().toDateString();
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-stone-100 p-6 mb-6">
-      {/* Header */}
+    <div className="card-elevated p-6 mb-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h3 className="text-base font-medium text-slate-700">
-            {isToday ? "Today's Progress" : "Daily Progress"}
+          <h3 className="text-base font-semibold text-[var(--color-text-primary)]">
+            {isToday ? "Today's progress" : 'Daily progress'}
           </h3>
-          <p className="text-xs text-stone-500 mt-1">
+          <p className="text-xs text-[var(--color-text-muted)] mt-1">
             {isToday ? 'Your macro targets' : selectedDate.toLocaleDateString()}
           </p>
         </div>
-        
+
         {onGoalsClick && (
           <button
+            type="button"
             onClick={onGoalsClick}
-            className="p-2 text-stone-400 hover:text-slate-700 hover:bg-stone-100 rounded-full transition-colors"
+            className="stats-nav-btn"
             aria-label="Adjust goals"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -204,18 +201,17 @@ const MacroGoalsCard: React.FC<MacroGoalsCardProps> = ({
         </div>
       </div>
 
-      {/* Goals Summary */}
-      <div className="mt-6 pt-4 border-t border-stone-100">
+      <div className="mt-6 pt-4 border-t border-[var(--color-border)]">
         <div className="text-center">
-          <div className="text-xs text-stone-500 mb-2">Daily Goals</div>
-          <div className="text-xs text-stone-600 space-x-4">
-            <span>{Math.round(userGoals.daily_calories_goal)} cal</span>
+          <div className="section-label mb-2">Daily goals</div>
+          <div className="text-xs text-[var(--color-text-secondary)] space-x-4">
+            <span className="text-macro-calories">{Math.round(userGoals.daily_calories_goal)} cal</span>
             <span>•</span>
-            <span>{userGoals.daily_protein_goal}g protein</span>
+            <span className="text-macro-protein">{userGoals.daily_protein_goal}g protein</span>
             <span>•</span>
-            <span>{userGoals.daily_carbs_goal}g carbs</span>
+            <span className="text-macro-carbs">{userGoals.daily_carbs_goal}g carbs</span>
             <span>•</span>
-            <span>{userGoals.daily_fats_goal}g fats</span>
+            <span className="text-macro-fats">{userGoals.daily_fats_goal}g fats</span>
           </div>
         </div>
       </div>

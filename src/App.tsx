@@ -1,146 +1,540 @@
-import { useState, useEffect } from 'react'; // Removed unused useRef and default React import
+import { useState, useEffect } from 'react';
+
+
+
 import type { Session } from '@supabase/supabase-js';
+
+
+
 import { supabase } from './supabaseClient';
-import { Auth } from '@supabase/auth-ui-react';
-import { ThemeSupa } from '@supabase/auth-ui-shared';
+
+
+
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
-import MainLayout from './layouts/MainLayout'; // Import the layout
-import LogPage from './pages/LogPage'; // Import the new page component for logging
+
+
+
+
+
+
+import MainLayout from './layouts/MainLayout';
+
+
+
+import LogPage from './pages/LogPage';
+
+
+
 import FoodEntryList from './components/FoodEntryList';
+
+
+
 import SummaryDisplay from './components/SummaryDisplay';
 
-function App() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true); // Added loading state
 
-  useEffect(() => {
-    setLoading(true); // Set loading true at the start of effect
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoading(false); // Set loading false after session is fetched
-    });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
+import TypographyPreviewPage from './pages/TypographyPreviewPage';
 
-    return () => subscription.unsubscribe();
-  }, []);
 
-  const handleLogout = async () => {
-    try {
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        // Handle session missing error by manually clearing session
-        if (error.message.includes('session missing') || error.message.includes('Auth session missing')) {
-          setSession(null);
-        }
-      }
-    } catch (err) {
-      // Fallback: manually clear session if signOut fails
-      setSession(null);
-    }
-  };
 
-  // Display a simple loading text while session is being determined
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-stone-50">
-        <p className="text-lg text-stone-600">Loading...</p>
-      </div>
-    );
-  }
+import SahhaBrand from './components/SahhaBrand';
+
+
+
+import AuthScreen from './components/AuthScreen';
+
+import LoadingState from './components/LoadingState';
+
+import NameSetupModal from './components/NameSetupModal';
+
+import GoalsOnboardingModal from './components/GoalsOnboardingModal';
+
+import MicIntroModal from './components/MicIntroModal';
+
+import { SAHHA_TAGLINE, getBootLoadingLabel, getBootLoadingSublabel } from './copy/experience';
+
+
+
+import { UserExperienceProvider, useUserExperience } from './context/UserExperienceContext';
+
+import { ToastProvider } from './context/ToastContext';
+
+
+
+
+
+
+
+function AuthenticatedApp({
+
+
+
+  session,
+
+
+
+  handleLogout,
+
+
+
+}: {
+
+
+
+  session: Session;
+
+
+
+  handleLogout: () => void;
+
+
+
+}) {
+
+
+
+  const {
+
+    needsName,
+
+    needsGoals,
+
+    needsMicIntro,
+
+    setDisplayName,
+
+    refresh,
+
+    completeMicIntro,
+
+  } = useUserExperience();
+
+
+
+
+
+
 
   return (
-    <Router>
-      {!session ? (
-        // Enhanced Auth UI - matching app design system
-        <div className="flex items-center justify-center min-h-screen px-4 bg-stone-50">
-          <div className="w-full max-w-md">
-            {/* Header Card */}
-            <div className="bg-white rounded-xl shadow-sm border border-stone-100 p-8 mb-6">
-              <div className="text-center space-y-2">
-                <h1 className="text-3xl font-semibold text-slate-700 tracking-tight">Macro Logger</h1>
-                <p className="text-sm text-stone-500">Track your nutrition with ease</p>
-              </div>
-            </div>
-            
-            {/* Auth Card */}
-            <div className="bg-white rounded-xl shadow-sm border border-stone-100 p-6">
-              <Auth
-                supabaseClient={supabase}
-                appearance={{
-                  theme: ThemeSupa,
-                  variables: {
-                    default: {
-                      colors: {
-                        brand: '#334155', // Our navy slate-700
-                        brandAccent: '#1e293b', // Darker navy slate-800 for hover
-                        brandButtonText: 'white',
-                        defaultButtonBackground: '#f8fafc',
-                        defaultButtonBackgroundHover: '#f1f5f9',
-                        defaultButtonBorder: '#e2e8f0',
-                        defaultButtonText: '#334155',
-                        dividerBackground: '#e7e5e4', // stone-200
-                        inputBackground: '#fafaf9', // stone-50
-                        inputBorder: '#e7e5e4', // stone-200
-                        inputBorderFocus: '#334155', // slate-700
-                        inputText: '#292524', // stone-800
-                        inputLabelText: '#57534e', // stone-600
-                        inputPlaceholder: '#a8a29e', // stone-400
-                      },
-                      space: {
-                        spaceSmall: '4px',
-                        spaceMedium: '8px',
-                        spaceLarge: '16px',
-                        labelBottomMargin: '8px',
-                        anchorBottomMargin: '4px',
-                        emailInputSpacing: '4px',
-                        socialAuthSpacing: '4px',
-                        buttonPadding: '10px 15px',
-                        inputPadding: '10px 15px',
-                      },
-                      fontSizes: {
-                        baseBodySize: '14px',
-                        baseInputSize: '14px',
-                        baseLabelSize: '14px',
-                        baseButtonSize: '14px',
-                      },
-                      borderWidths: {
-                        buttonBorderWidth: '1px',
-                        inputBorderWidth: '1px',
-                      },
-                      radii: {
-                        borderRadiusButton: '8px',
-                        buttonBorderRadius: '8px',
-                        inputBorderRadius: '8px',
-                      }
-                    }
-                  }
-                }}
-                providers={[]}
-                theme="light"
-              />
-            </div>
-          </div>
-        </div>
-      ) : (
-        // Logged-in state: Render the layout with routes
-        <Routes>
-          <Route path="/*" element={<MainLayout session={session} handleLogout={handleLogout} />}>
-            {/* Nested routes render inside MainLayout's <Outlet /> */}
-            <Route index element={<LogPage session={session} />} /> {/* Default route */}
-            <Route path="today" element={<FoodEntryList session={session} />} />
-            <Route path="summary" element={<SummaryDisplay session={session} />} />
-            {/* Optional: Redirect any unknown nested paths back to the layout's default (index) */}
-            {/* This assumes MainLayout is handling the base path correctly */}
-            <Route path="*" element={<Navigate to="." replace />} /> 
-          </Route>
-        </Routes>
-      )}
-    </Router>
+
+
+
+    <>
+
+
+
+      <Routes>
+
+
+
+        <Route path="/*" element={<MainLayout session={session} handleLogout={handleLogout} />}>
+
+
+
+          <Route index element={<FoodEntryList session={session} />} />
+
+
+
+          <Route path="log" element={<LogPage session={session} />} />
+
+
+
+          <Route path="today" element={<Navigate to="/" replace />} />
+
+
+
+          <Route path="summary" element={<SummaryDisplay session={session} />} />
+
+
+
+          <Route path="*" element={<Navigate to="." replace />} />
+
+
+
+        </Route>
+
+
+
+      </Routes>
+
+
+
+      <NameSetupModal isOpen={needsName} onSave={setDisplayName} />
+
+
+
+      <GoalsOnboardingModal
+
+        session={session}
+
+        isOpen={needsGoals}
+
+        onComplete={refresh}
+
+      />
+
+
+
+      <MicIntroModal
+
+        isOpen={needsMicIntro}
+
+        onComplete={completeMicIntro}
+
+      />
+
+
+
+    </>
+
+
+
   );
+
+
+
 }
 
+
+
+
+
+
+
+function AppShell({
+
+
+
+  session,
+
+
+
+  loading,
+
+
+
+  handleLogout,
+
+
+
+}: {
+
+
+
+  session: Session | null;
+
+
+
+  loading: boolean;
+
+
+
+  handleLogout: () => void;
+
+
+
+}) {
+
+
+
+  if (loading) {
+
+
+
+    return (
+
+
+
+      <div className="app-scroll-view flex items-center justify-center w-full app-bg safe-x">
+
+        <div className="app-container py-8">
+
+          <LoadingState
+
+            label={getBootLoadingLabel()}
+
+            sublabel={getBootLoadingSublabel()}
+
+          />
+
+        </div>
+
+      </div>
+
+
+
+    );
+
+
+
+  }
+
+
+
+
+
+
+
+  if (!session) {
+
+
+
+    return (
+
+
+
+      <div className="app-scroll-view flex items-center justify-center w-full auth-bg safe-top safe-bottom safe-x">
+
+        <div className="app-container auth-page animate-fade-in">
+
+
+
+          <SahhaBrand
+
+
+
+            size="lg"
+
+
+
+            variant="hero"
+
+
+
+            showTagline
+
+            tagline={SAHHA_TAGLINE}
+
+
+
+          />
+
+
+
+          <AuthScreen />
+
+
+
+        </div>
+
+
+
+      </div>
+
+
+
+    );
+
+
+
+  }
+
+
+
+
+
+
+
+  return (
+
+
+
+    <UserExperienceProvider session={session}>
+
+
+
+      <ToastProvider>
+
+
+
+        <AuthenticatedApp session={session} handleLogout={handleLogout} />
+
+
+
+      </ToastProvider>
+
+
+
+    </UserExperienceProvider>
+
+
+
+  );
+
+
+
+}
+
+
+
+
+
+
+
+function App() {
+
+
+
+  const [session, setSession] = useState<Session | null>(null);
+
+
+
+  const [loading, setLoading] = useState(true);
+
+
+
+
+
+
+
+  useEffect(() => {
+
+
+
+    setLoading(true);
+
+
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+
+
+
+      setSession(session);
+
+
+
+      setLoading(false);
+
+
+
+    });
+
+
+
+
+
+
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+
+
+
+      setSession(session);
+
+
+
+    });
+
+
+
+
+
+
+
+    return () => subscription.unsubscribe();
+
+
+
+  }, []);
+
+
+
+
+
+
+
+  const handleLogout = async () => {
+
+
+
+    try {
+
+
+
+      const { error } = await supabase.auth.signOut();
+
+
+
+      if (error) {
+
+
+
+        if (error.message.includes('session missing') || error.message.includes('Auth session missing')) {
+
+
+
+          setSession(null);
+
+
+
+        }
+
+
+
+      }
+
+
+
+    } catch {
+
+
+
+      setSession(null);
+
+
+
+    }
+
+
+
+  };
+
+
+
+
+
+
+
+  return (
+
+
+
+    <Router>
+
+
+
+      <Routes>
+
+
+
+        <Route path="/typography-preview" element={<TypographyPreviewPage />} />
+
+
+
+        <Route path="*" element={<AppShell session={session} loading={loading} handleLogout={handleLogout} />} />
+
+
+
+      </Routes>
+
+
+
+    </Router>
+
+
+
+  );
+
+
+
+}
+
+
+
+
+
+
+
 export default App;
+

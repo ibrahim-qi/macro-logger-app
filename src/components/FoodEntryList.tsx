@@ -1,14 +1,22 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import type { Session } from '@supabase/supabase-js';
-import Modal from './Modal'; // Import the Modal component
-import EditEntryForm from './EditEntryForm'; // Import the EditEntryForm component
-import GoalsSettingsForm from './GoalsSettingsForm'; // Import the goals settings form
-import TabNavigation from './TabNavigation'; // Import the tab navigation
-import EntriesTab from './EntriesTab'; // Import the entries tab
-import GoalsTab from './GoalsTab'; // Import the goals tab
+import Modal from './Modal';
+import EditEntryForm from './EditEntryForm';
+import GoalsSettingsForm from './GoalsSettingsForm';
+import TodayHero from './TodayHero';
+import TodayDateNav from './TodayDateNav';
+import { TodayPageSkeleton } from './Skeleton';
+import { computeStreak, datesFromTimestamps } from '../utils/streak';
+import TabNavigation from './TabNavigation';
+import EntriesTab from './EntriesTab';
+import GoalsTab from './GoalsTab';
+import { formatLocalDateKey } from '../utils/localDate';
+import { useUserExperience } from '../context/UserExperienceContext';
+import { useToast } from '../context/ToastContext';
+import { getDeleteEntryBody, getDeleteEntryTitle, getLogSuccessToast } from '../copy/experience';
 
-// Define the structure of a food entry based on our table
 interface FoodEntry {
   id: number;
   created_at: string;
@@ -36,10 +44,7 @@ interface FoodEntryListProps {
   // We\'ll add a way to trigger refresh later
 }
 
-// Helper function to format a Date object as YYYY-MM-DD
-const formatDate = (date: Date): string => {
-  return date.toISOString().split('T')[0];
-};
+const formatDate = (date: Date): string => formatLocalDateKey(date);
 
 // Helper function to check if a date is today
 const isToday = (date: Date): boolean => {
@@ -48,10 +53,14 @@ const isToday = (date: Date): boolean => {
 };
 
 const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
+  const location = useLocation();
+  const { showToast } = useToast();
+  const { refresh: refreshExperience } = useUserExperience();
   const [entries, setEntries] = useState<FoodEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [displayedDate, setDisplayedDate] = useState(new Date()); // State for the displayed date
+  const [displayedDate, setDisplayedDate] = useState(new Date());
+  const [highlightLoggedAfter, setHighlightLoggedAfter] = useState<number | null>(null);
   
   // State for Edit Modal
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -74,6 +83,7 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
     daily_carbs_goal: number;
     daily_fats_goal: number;
   } | null>(null);
+  const [streak, setStreak] = useState(0);
   const [goalsLoading, setGoalsLoading] = useState(true);
 
   // Calculate daily totals
@@ -120,6 +130,22 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
   }, [session.user.id]);
 
   // Function to fetch user goals
+  const fetchStreak = useCallback(async () => {
+    try {
+      const since = new Date();
+      since.setDate(since.getDate() - 60);
+      const { data, error } = await supabase
+        .from('food_entries')
+        .select('created_at')
+        .eq('user_id', session.user.id)
+        .gte('created_at', since.toISOString());
+      if (error) throw error;
+      setStreak(computeStreak(datesFromTimestamps((data ?? []).map((r) => r.created_at))));
+    } catch {
+      setStreak(0);
+    }
+  }, [session.user.id]);
+
   const fetchUserGoals = useCallback(async () => {
     try {
       setGoalsLoading(true);
@@ -132,21 +158,7 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
 
       if (error) {
         if (error.code === 'PGRST116') {
-          // No goals set yet - create default goals
-          const { data: insertData, error: insertError } = await supabase
-            .from('user_goals')
-            .insert({
-              user_id: session.user.id,
-              daily_calories_goal: 2000,
-              daily_protein_goal: 150,
-              daily_carbs_goal: 250,
-              daily_fats_goal: 65
-            })
-            .select('daily_calories_goal, daily_protein_goal, daily_carbs_goal, daily_fats_goal')
-            .single();
-
-          if (insertError) throw insertError;
-          setUserGoals(insertData);
+          setUserGoals(null);
         } else {
           throw error;
         }
@@ -192,6 +204,8 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
 
       // Remove the entry from the local state
       setEntries(currentEntries => currentEntries.filter(entry => entry.id !== entryId));
+      fetchStreak();
+      refreshExperience();
 
     } catch (err: any) {
       console.error('Error deleting entry:', err);
@@ -206,8 +220,24 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
     if (session) {
       fetchEntries(displayedDate);
       fetchUserGoals();
+      fetchStreak();
     }
-  }, [session, displayedDate, fetchEntries, fetchUserGoals]); // Add fetchUserGoals
+  }, [session, displayedDate, fetchEntries, fetchUserGoals, fetchStreak]);
+
+  useEffect(() => {
+    const state = location.state as {
+      logSuccess?: { calories: number; loggedAt: number };
+    } | null;
+
+    if (state?.logSuccess) {
+      showToast(getLogSuccessToast(state.logSuccess.calories));
+      setHighlightLoggedAfter(state.logSuccess.loggedAt - 2000);
+      setDisplayedDate(new Date());
+      setActiveTab('entries');
+      window.history.replaceState({}, document.title);
+      window.setTimeout(() => setHighlightLoggedAfter(null), 8000);
+    }
+  }, [location.state, showToast]);
 
   // Effect for Realtime subscription
   useEffect(() => {
@@ -232,6 +262,8 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
           if (isToday(displayedDate) && formatDate(newEntryDate) === formatDate(displayedDate)) {
              console.log('New entry received for today:', payload);
              setEntries(currentEntries => [payload.new as FoodEntry, ...currentEntries].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+             fetchStreak();
+             refreshExperience();
           }
         }
       )
@@ -241,7 +273,7 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
       supabase.removeChannel(channel);
     };
 
-  }, [session, displayedDate]); // Depend on session and displayedDate
+  }, [session, displayedDate, fetchStreak, refreshExperience]);
 
   // --- Edit Modal Handlers ---
   const handleOpenEditModal = (entry: FoodEntry) => {
@@ -335,71 +367,44 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
   };
 
   const handleGoalsUpdated = () => {
-    fetchUserGoals(); // Refresh user goals when they're updated
+    fetchUserGoals();
+    refreshExperience();
   };
 
 
   if (loading) {
-    return <p className="text-center text-stone-500 py-4">Loading entries...</p>;
+    return <TodayPageSkeleton />;
   }
 
   if (error) {
-    return <p className="text-center text-stone-500 py-4">{error}</p>;
+    return <p className="text-center text-danger py-4 text-sm">{error}</p>;
   }
 
   return (
-    <div>
-      {/* Minimal Date Header */}
-      <div className="flex items-center justify-between mb-6">
-        <button
-          onClick={goToPreviousDay}
-          className="p-2 hover:bg-stone-100 rounded-full transition-colors"
-          aria-label="Previous day"
-        >
-          <svg className="w-5 h-5 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
-        
-        <div className="text-center">
-          <h2 className="text-lg font-medium text-stone-900">
-            {isToday(displayedDate) ? 'Today' : displayedDate.toLocaleDateString('en-US', { 
-              weekday: 'short', 
-              month: 'short', 
-              day: 'numeric' 
-            })}
-          </h2>
-          {!isToday(displayedDate) && (
-            <button
-              onClick={() => setDisplayedDate(new Date())}
-              className="text-xs text-stone-500 hover:text-stone-700 mt-1"
-            >
-              Jump to today
-            </button>
-          )}
-        </div>
-        
-        <button
-          onClick={goToNextDay}
-          disabled={isToday(displayedDate)}
-          className="p-2 hover:bg-stone-100 rounded-full transition-colors disabled:opacity-30"
-          aria-label="Next day"
-        >
-          <svg className="w-5 h-5 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </button>
-      </div>
+    <div className="today-page">
+      <TodayDateNav
+        displayedDate={displayedDate}
+        onPrevious={goToPreviousDay}
+        onNext={goToNextDay}
+        onJumpToday={() => setDisplayedDate(new Date())}
+      />
 
-      {/* Tab Navigation */}
+      {isToday(displayedDate) && (
+        <TodayHero
+          dailyTotals={dailyTotals}
+          userGoals={userGoals}
+          streak={streak}
+        />
+      )}
+
       <TabNavigation
         tabs={[
-          { id: 'entries', label: 'Entries' },
-          { id: 'goals', label: 'Goals' }
+          { id: 'entries', label: 'Meals' },
+          { id: 'goals', label: 'Targets' },
         ]}
         activeTab={activeTab}
         onTabChange={setActiveTab}
-        className="mb-6"
+        className="segment-tabs--minimal"
       />
 
       {/* Tab Content */}
@@ -411,6 +416,8 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
             onEditEntry={handleOpenEditModal}
             onDeleteEntry={requestDeleteEntry}
             isActive={true}
+            showDayTotals={!isToday(displayedDate)}
+            highlightLoggedAfter={highlightLoggedAfter}
           />
         ) : (
           <GoalsTab
@@ -437,20 +444,12 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
 
       {/* Delete Confirmation Modal */}
       {isDeleteConfirmOpen && (
-        <Modal isOpen={true} onClose={cancelDelete} title="Delete Entry">
+        <Modal isOpen={true} onClose={cancelDelete} title={getDeleteEntryTitle()}>
           <div className="space-y-6">
-            <p className="text-stone-600">Are you sure you want to delete this entry?</p>
-            <div className="flex space-x-3">
-              <button
-                onClick={cancelDelete}
-                className="flex-1 py-3 px-4 border border-stone-200 text-stone-700 rounded-xl hover:bg-stone-50 transition-colors focus:outline-none focus:ring-2 focus:ring-stone-300"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmDeleteEntry}
-                className="flex-1 py-3 px-4 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-400"
-              >
+            <p className="type-body-sm text-[var(--color-text-secondary)]">{getDeleteEntryBody()}</p>
+            <div className="flex gap-3">
+              <button onClick={cancelDelete} className="flex-1 btn-ghost py-3">Cancel</button>
+              <button type="button" onClick={confirmDeleteEntry} className="btn-danger">
                 Delete
               </button>
             </div>

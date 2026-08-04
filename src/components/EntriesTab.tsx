@@ -1,4 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
+import { Link } from 'react-router-dom';
+import { SahhaMark } from './SahhaBrand';
+import MacroStatGrid from './MacroStatGrid';
+import { getEmptyStateBody, getEmptyStateCta, getEmptyStateTitle } from '../copy/experience';
+import { useUserExperience } from '../context/UserExperienceContext';
+import { getMealPeriod } from '../utils/mealTotals';
 
 interface FoodEntry {
   id: number;
@@ -24,125 +30,121 @@ interface EntriesTabProps {
   onEditEntry: (entry: FoodEntry) => void;
   onDeleteEntry: (id: number) => void;
   isActive: boolean;
+  showDayTotals?: boolean;
+  highlightLoggedAfter?: number | null;
 }
 
+const periodClass: Record<string, string> = {
+  Breakfast: 'entry-card--breakfast',
+  Lunch: 'entry-card--lunch',
+  Snack: 'entry-card--snack',
+  Dinner: 'entry-card--dinner',
+};
+
 const EntriesTab: React.FC<EntriesTabProps> = ({
-  entries,
-  dailyTotals,
-  onEditEntry,
-  onDeleteEntry,
-  isActive
+  entries, dailyTotals, onEditEntry, onDeleteEntry, isActive, showDayTotals = true,
+  highlightLoggedAfter = null,
 }) => {
+  const { experience } = useUserExperience();
+
+  const grouped = useMemo(() => {
+    const groups = new Map<string, FoodEntry[]>();
+    for (const entry of entries) {
+      const period = getMealPeriod(new Date(entry.created_at));
+      const list = groups.get(period) ?? [];
+      list.push(entry);
+      groups.set(period, list);
+    }
+    const order = ['Breakfast', 'Lunch', 'Snack', 'Dinner'];
+    return order
+      .filter((p) => groups.has(p))
+      .map((period) => ({ period, items: groups.get(period)! }));
+  }, [entries]);
+
   return (
-    <div 
-      className={`
-        transition-all duration-300 ease-out
-        ${isActive ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-4 pointer-events-none'}
-      `}
-    >
-      {/* Quick Daily Summary */}
-      {entries.length > 0 && (
-        <div className="mb-6">
-          <div className="bg-white rounded-xl shadow-sm border border-stone-100 p-4">
-            <div className="grid grid-cols-4 gap-4 text-center">
-              <div>
-                <div className="text-lg font-light text-slate-700">{dailyTotals.calories.toFixed(0)}</div>
-                <div className="text-xs text-stone-500 uppercase tracking-wide">Cal</div>
-              </div>
-              <div>
-                <div className="text-sm font-light text-stone-700">{dailyTotals.protein.toFixed(1)}g</div>
-                <div className="text-xs text-stone-500 uppercase tracking-wide">Protein</div>
-              </div>
-              <div>
-                <div className="text-sm font-light text-stone-700">{dailyTotals.carbs.toFixed(1)}g</div>
-                <div className="text-xs text-stone-500 uppercase tracking-wide">Carbs</div>
-              </div>
-              <div>
-                <div className="text-sm font-light text-stone-700">{dailyTotals.fats.toFixed(1)}g</div>
-                <div className="text-xs text-stone-500 uppercase tracking-wide">Fats</div>
-              </div>
-            </div>
-          </div>
+    <div className={`transition-opacity duration-300 ${isActive ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+      {entries.length > 0 && showDayTotals && (
+        <div className="card p-4 mb-5">
+          <p className="section-label mb-3">Day totals</p>
+          <MacroStatGrid
+            size="sm"
+            values={{
+              calories: dailyTotals.calories,
+              protein: dailyTotals.protein,
+              carbs: dailyTotals.carbs,
+              fats: dailyTotals.fats,
+            }}
+          />
         </div>
       )}
 
-      {/* Empty State */}
       {entries.length === 0 && (
-        <div className="text-center py-16">
-          <div className="text-stone-400 mb-4">
-            <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-            </svg>
+        <div className="empty-panel">
+          <div className="empty-panel__mark">
+            <SahhaMark className="brand-mark--hero-sm" glow />
           </div>
-          <h3 className="text-lg font-medium text-stone-700 mb-2">No entries yet</h3>
-          <p className="text-sm text-stone-500 mb-6 max-w-xs mx-auto">
-            Start logging your meals to track your daily nutrition
-          </p>
-          <div className="space-y-3">
-            <p className="text-xs text-stone-500">Go to the "Log" tab to add your first meal</p>
-          </div>
+          <h3 className="empty-panel__title">{getEmptyStateTitle(experience)}</h3>
+          <p className="empty-panel__body">{getEmptyStateBody(experience)}</p>
+          <Link to="/log" className="btn-primary max-w-[14rem] mx-auto">
+            {getEmptyStateCta(experience)}
+          </Link>
         </div>
       )}
 
-      {/* Food Entries List */}
       {entries.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-sm font-medium text-stone-700 mb-3">
-            Today's Entries ({entries.length})
-          </h3>
-          
-          <div className="bg-white rounded-xl shadow-sm border border-stone-100 overflow-hidden">
-            <div className="divide-y divide-stone-50">
-              {entries.map((entry) => (
-                <div 
-                  key={entry.id} 
-                  className="flex items-center justify-between p-4 transition-all duration-200"
-                >
-                  <div className="flex-1 mr-4">
-                    <p className="font-medium text-stone-900 capitalize leading-tight">
-                      {entry.food_name}
-                    </p>
-                    <div className="flex items-center space-x-3 mt-1 text-sm text-stone-500">
-                      <span>{new Date(entry.created_at).toLocaleTimeString([], { 
-                        hour: 'numeric', 
-                        minute: '2-digit' 
-                      })}</span>
-                      <span>×{entry.quantity}</span>
-                      <span>{(entry.calories * entry.quantity).toFixed(0)} cal</span>
-                      {(entry.protein ?? 0) > 0 && (
-                        <span>{((entry.protein ?? 0) * entry.quantity).toFixed(1)}g protein</span>
-                      )}
+        <div className="entry-feed">
+          {grouped.map(({ period, items }) => (
+            <div key={period}>
+              <p className="entry-group__label">{period}</p>
+              <div className="space-y-2">
+                {items.map((entry) => {
+                  const isJustLogged = highlightLoggedAfter !== null
+                    && new Date(entry.created_at).getTime() >= highlightLoggedAfter;
+                  return (
+                  <article
+                    key={entry.id}
+                    className={`entry-card ${periodClass[period] ?? ''}${isJustLogged ? ' entry-card--just-logged' : ''}`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="entry-card__name">{entry.food_name}</p>
+                      <div className="entry-card__meta">
+                        <span className="type-meta">
+                          {new Date(entry.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                        </span>
+                        <span className="macro-pill macro-pill--calories">
+                          {(entry.calories * entry.quantity).toFixed(0)} cal
+                        </span>
+                        {entry.quantity !== 1 && (
+                          <span className="macro-pill macro-pill--neutral">×{entry.quantity}</span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                  
-                  <div className="flex space-x-1">
-                    <button 
-                      onClick={() => onEditEntry(entry)}
-                      className="p-2 text-stone-400 hover:text-slate-700 hover:bg-stone-100 rounded-full transition-all duration-200"
-                      aria-label={`Edit ${entry.food_name}`}
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                      </svg>
-                    </button>
-                    
-                    <button 
-                      onClick={() => onDeleteEntry(entry.id)}
-                      className="p-2 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-all duration-200"
-                      aria-label={`Delete ${entry.food_name}`}
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              ))}
+                    <div className="entry-card__actions">
+                      <button
+                        type="button"
+                        onClick={() => onEditEntry(entry)}
+                        className="entry-card__action"
+                        aria-label="Edit"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onDeleteEntry(entry.id)}
+                        className="entry-card__action entry-card__action--danger"
+                        aria-label="Delete"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                      </button>
+                    </div>
+                  </article>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          ))}
         </div>
       )}
-
     </div>
   );
 };

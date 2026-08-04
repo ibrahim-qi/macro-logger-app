@@ -210,7 +210,7 @@ const SavedFoodManager: React.FC<SavedFoodManagerProps> = ({ session, onFoodSele
   };
 
   if (error) {
-    return <p className="text-red-500 text-center py-3">{error}</p>;
+    return <p className="text-danger text-center py-3">{error}</p>;
   }
 
   const filteredFoods = savedFoods.filter(food => 
@@ -218,221 +218,96 @@ const SavedFoodManager: React.FC<SavedFoodManagerProps> = ({ session, onFoodSele
   );
 
   return (
-    <div>
-        <div className="flex justify-between items-center mb-6">
-            <div>
-                <h2 className="text-xl font-medium text-slate-700">Saved Foods</h2>
-                <p className="text-sm text-stone-500 mt-1">Quick add from your favorites</p>
-            </div>
-            <button 
+    <div className="pt-2">
+        <div className="flex justify-between items-center mb-4">
+            <p className="text-xs text-[var(--color-text-muted)]">{savedFoods.length} saved</p>
+            <button
                 onClick={() => {
                     if (showForm && editingFoodId) resetForm();
                     else if (showForm) setShowForm(false);
-                    else { 
-                        resetForm();
-                        setShowForm(true);
-                    }
+                    else { resetForm(); setShowForm(true); }
                 }}
-                className={`flex items-center space-x-2 px-3 py-2 rounded-full transition-colors focus:outline-none focus:ring-2 ${
-                    showForm ? 'bg-stone-100 hover:bg-stone-200 focus:ring-stone-300 text-stone-700' : 'bg-stone-100 hover:bg-stone-200 focus:ring-stone-300 text-stone-700'
-                }`}
+                className="btn-ghost text-xs py-1.5 px-3"
             >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    {showForm ? (
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    ) : (
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                    )}
-                </svg>
-                <span className="text-sm font-medium">
-                    {showForm ? 'Cancel' : 'Add'}
-                </span>
+                {showForm ? 'Cancel' : '+ Add food'}
             </button>
         </div>
 
         {showForm && (
-            <div className="mb-6">
-                <div className="bg-white rounded-xl shadow-sm border border-stone-100 p-6">
-                    <form onSubmit={handleFormSubmit} className="space-y-6">
-                        <div>
-                            <h3 className="text-base font-medium text-stone-900 mb-4">
-                                {editingFoodId ? 'Edit Food' : 'Save New Food'}
-                            </h3>
-                        </div>
+            <div className="mb-4 card p-4">
+                    <form onSubmit={handleFormSubmit} className="space-y-4">
+                        <p className="text-sm font-semibold text-white">{editingFoodId ? 'Edit food' : 'Save new food'}</p>
                         
                         <div>
-                            <label htmlFor="saved_food_name" className="block text-sm font-medium text-stone-900 mb-2">Food Name</label>
-                            <input 
-                                type="text" 
-                                name="food_name" 
-                                id="saved_food_name" 
-                                value={formData.food_name} 
-                                onChange={handleInputChange} 
-                                required 
-                                placeholder="e.g., Grilled Chicken Breast"
-                                className="w-full px-0 py-3 text-base bg-transparent border-0 border-b border-stone-200 focus:outline-none focus:border-slate-700 focus:ring-0 placeholder-stone-400 transition-colors"
+                            <label htmlFor="saved_food_name" className="form-label-sm">Food name</label>
+                            <input type="text" name="food_name" id="saved_food_name" value={formData.food_name} onChange={handleInputChange} required placeholder="Grilled chicken" className="input-premium" />
+                        </div>
+
+                        <div>
+                            <label htmlFor="saved_calories" className="form-label text-macro-calories">Calories</label>
+                            <input
+                                type="number"
+                                name="calories"
+                                id="saved_calories"
+                                value={formData.calories}
+                                onChange={handleInputChange}
+                                required
+                                min="0"
+                                inputMode="numeric"
+                                placeholder="200"
+                                className="input-premium"
                             />
                         </div>
-                        
-                        <div className="grid grid-cols-2 gap-8">
-                            <div>
-                                <label htmlFor="saved_calories" className="block text-sm font-medium text-stone-900 mb-2">Calories</label>
-                                <input 
-                                    type="number" 
-                                    name="calories" 
-                                    id="saved_calories" 
-                                    value={formData.calories} 
-                                    onChange={handleInputChange} 
-                                    required 
-                                    min="0" 
-                                    inputMode="numeric"
-                                    placeholder="200"
-                                    className="w-full px-0 py-3 text-base bg-transparent border-0 border-b border-stone-200 focus:outline-none focus:border-slate-700 focus:ring-0 placeholder-stone-400 transition-colors"
-                                />
-                            </div>
-                        </div>
-                        
-                        <div className="pt-4 mt-4 border-t border-stone-100">
-                            <div className="mb-4">
-                                <h4 className="text-sm font-medium text-stone-900">Macros (optional)</h4>
-                                <p className="text-xs text-stone-500 mt-1">Per serving</p>
-                            </div>
-                            
-                            <div className="grid grid-cols-3 gap-6">
+
+                        <div className="pt-2 border-t border-[var(--color-border)]">
+                            <p className="form-label">Macros (optional)</p>
+                            <p className="form-hint mb-3">Per serving</p>
+
+                            <div className="grid grid-cols-3 gap-3">
                                 <div>
-                                    <label htmlFor="saved_protein" className="block text-xs text-stone-600 mb-2">Protein (g)</label>
-                                    <input 
-                                        type="number" 
-                                        name="protein" 
-                                        id="saved_protein" 
-                                        value={formData.protein} 
-                                        onChange={handleInputChange} 
-                                        min="0" 
-                                        step="0.1" 
-                                        inputMode="decimal"
-                                        placeholder="25"
-                                        className="w-full px-0 py-2 text-sm bg-transparent border-0 border-b border-stone-200 focus:outline-none focus:border-slate-700 focus:ring-0 placeholder-stone-400 transition-colors"
-                                    />
+                                    <label htmlFor="saved_protein" className="form-label-sm text-macro-protein">Protein (g)</label>
+                                    <input type="number" name="protein" id="saved_protein" value={formData.protein} onChange={handleInputChange} min="0" step="0.1" inputMode="decimal" placeholder="25" className="input-premium" />
                                 </div>
                                 <div>
-                                    <label htmlFor="saved_carbs" className="block text-xs text-stone-600 mb-2">Carbs (g)</label>
-                                    <input 
-                                        type="number" 
-                                        name="carbs" 
-                                        id="saved_carbs" 
-                                        value={formData.carbs} 
-                                        onChange={handleInputChange} 
-                                        min="0" 
-                                        step="0.1" 
-                                        inputMode="decimal"
-                                        placeholder="30"
-                                        className="w-full px-0 py-2 text-sm bg-transparent border-0 border-b border-stone-200 focus:outline-none focus:border-slate-700 focus:ring-0 placeholder-stone-400 transition-colors"
-                                    />
+                                    <label htmlFor="saved_carbs" className="form-label-sm text-macro-carbs">Carbs (g)</label>
+                                    <input type="number" name="carbs" id="saved_carbs" value={formData.carbs} onChange={handleInputChange} min="0" step="0.1" inputMode="decimal" placeholder="30" className="input-premium" />
                                 </div>
                                 <div>
-                                    <label htmlFor="saved_fats" className="block text-xs text-stone-600 mb-2">Fats (g)</label>
-                                    <input 
-                                        type="number" 
-                                        name="fats" 
-                                        id="saved_fats" 
-                                        value={formData.fats} 
-                                        onChange={handleInputChange} 
-                                        min="0" 
-                                        step="0.1" 
-                                        inputMode="decimal"
-                                        placeholder="15"
-                                        className="w-full px-0 py-2 text-sm bg-transparent border-0 border-b border-stone-200 focus:outline-none focus:border-slate-700 focus:ring-0 placeholder-stone-400 transition-colors"
-                                    />
+                                    <label htmlFor="saved_fats" className="form-label-sm text-macro-fats">Fats (g)</label>
+                                    <input type="number" name="fats" id="saved_fats" value={formData.fats} onChange={handleInputChange} min="0" step="0.1" inputMode="decimal" placeholder="15" className="input-premium" />
                                 </div>
                             </div>
                         </div>
                         
-                        <div className="pt-6">
-                            <button 
-                                type="submit" 
-                                disabled={saving} 
-                                className="w-full py-4 bg-slate-700 hover:bg-slate-800 disabled:bg-stone-300 text-white font-medium text-base rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-700 focus:ring-offset-2 transition-colors shadow-sm"
-                            >
-                                {saving ? 'Saving...' : (editingFoodId ? 'Update Food' : 'Save Food')}
+                        <div className="pt-2">
+                            <button type="submit" disabled={saving} className="btn-primary">
+                                {saving ? 'Saving…' : (editingFoodId ? 'Update' : 'Save')}
                             </button>
                         </div>
-                        
                         {formMessage && (
-                          <div className={`p-3 rounded-xl border text-sm font-medium text-center ${formMessage.includes('success') 
-                            ? 'text-green-800 bg-green-50 border-green-200' 
-                            : 'text-red-800 bg-red-50 border-red-200'}`}
-                          >
+                          <div className={formMessage.includes('success') ? 'alert-success' : 'alert-error'}>
                             {formMessage}
                           </div>
                         )}
                     </form>
-                </div>
             </div>
         )}
 
-        {/* Search & Food List Container */}
         {!showForm && savedFoods.length > 0 && (
-            <div className="bg-white rounded-xl shadow-sm border border-stone-100 overflow-hidden">
-                {/* Search Input */}
-                <div className="p-4 border-b border-stone-100">
-                    <input
-                        type="text"
-                        placeholder="Search foods..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full px-0 py-3 text-base bg-transparent border-0 border-b border-stone-200 focus:outline-none focus:border-slate-700 focus:ring-0 placeholder-stone-400 transition-colors"
-                    />
-                </div>
-                
-                {/* Food List */}
+            <div>
+                <input type="text" placeholder="Search…" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="input-premium mb-3 text-sm" />
                 {filteredFoods.length > 0 && (
-                    <div className="divide-y divide-stone-50 max-h-80 overflow-y-auto">
+                    <div className="space-y-2 max-h-64 overflow-y-auto scroll-touch">
                         {filteredFoods.map(food => (
-                            <div 
-                              key={food.id} 
-                              className="flex items-center justify-between p-4"
-                            >
-                                <div className="flex-1 mr-4">
-                                    <p className="font-medium text-stone-900 capitalize">{food.food_name}</p>
-                                    <div className="flex items-center space-x-4 mt-1 text-sm text-stone-500">
-                                        <span>{food.calories} cal</span>
-                                        {food.protein > 0 && <span>{food.protein}g protein</span>}
-                                        {food.carbs > 0 && <span>{food.carbs}g carbs</span>}
-                                        {food.fats > 0 && <span>{food.fats}g fats</span>}
-                                    </div>
+                            <div key={food.id} className="card p-3 flex items-center justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                    <p className="font-medium text-white capitalize truncate text-sm">{food.food_name}</p>
+                                    <p className="text-xs text-[var(--color-text-muted)] mt-0.5">{food.calories} cal · P {food.protein}g</p>
                                 </div>
-                                
-                                <div className="flex space-x-2">
-                                  <button 
-                                      onClick={() => onFoodSelect(food)}
-                                      disabled={saving}
-                                      className="px-3 py-2 text-sm font-medium text-white bg-slate-600 hover:bg-slate-700 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-slate-400 disabled:opacity-50"
-                                      aria-label={`Add ${food.food_name} to journal`}
-                                  >
-                                      Use
-                                  </button>
-                                  
-                                  <button
-                                    onClick={() => handleEditFood(food)}
-                                    disabled={saving}
-                                    className="p-2 text-stone-400 hover:text-slate-700 transition-colors disabled:opacity-50"
-                                    aria-label={`Edit ${food.food_name}`}
-                                  >
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                    </svg>
-                                  </button>
-                                  
-                                  <button 
-                                      onClick={() => requestDeleteSavedFood(food.id, food.food_name)}
-                                      disabled={saving}
-                                      className="p-2 text-stone-400 hover:text-red-500 transition-colors disabled:opacity-50"
-                                      aria-label={`Delete ${food.food_name}`}
-                                  >
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                    </svg>
-                                  </button>
+                                <div className="flex gap-1 shrink-0">
+                                  <button type="button" onClick={() => onFoodSelect(food)} disabled={saving} className="px-3 py-1.5 text-xs font-semibold text-[var(--color-bg)] bg-[var(--color-accent-strong)] rounded-lg hover:opacity-90 disabled:opacity-50">Use</button>
+                                  <button type="button" onClick={() => handleEditFood(food)} disabled={saving} className="p-1.5 text-[var(--color-text-muted)] hover:text-white rounded-lg" aria-label="Edit"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg></button>
+                                  <button type="button" onClick={() => requestDeleteSavedFood(food.id, food.food_name)} disabled={saving} className="p-1.5 text-[var(--color-text-muted)] hover:text-danger rounded-lg" aria-label="Delete"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
                                 </div>
                             </div>
                         ))}
@@ -441,35 +316,19 @@ const SavedFoodManager: React.FC<SavedFoodManagerProps> = ({ session, onFoodSele
             </div>
         )}
 
-        {/* Loading State */}
-        {loading && savedFoods.length === 0 && (
-            <div className="text-center py-8">
-                <p className="text-sm text-stone-500">Loading...</p>
-            </div>
-        )}
-        
-        {/* Empty State */}
         {!loading && savedFoods.length === 0 && !showForm && (
-          <div className="text-center py-12">
-            <div className="text-stone-400 mb-4">
-                <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-                </svg>
-            </div>
-            <p className="text-sm text-stone-500 mb-2">No saved foods yet</p>
-            <p className="text-xs text-stone-400">Add foods you eat regularly for quick logging</p>
-          </div>
+          <p className="text-sm text-[var(--color-text-muted)] text-center py-6">No saved foods yet</p>
         )}
         
         {/* No Search Results */}
         {!loading && savedFoods.length > 0 && filteredFoods.length === 0 && !showForm && (
-            <div className="text-center py-8">
-                <div className="text-stone-400 mb-4">
+            <div className="stats-empty py-8">
+                <div className="stats-empty__icon">
                     <svg className="w-8 h-8 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
                 </div>
-                <p className="text-sm text-stone-500">No foods match your search</p>
+                <p className="stats-empty__body">No foods match your search</p>
             </div>
         )}
 
@@ -477,24 +336,12 @@ const SavedFoodManager: React.FC<SavedFoodManagerProps> = ({ session, onFoodSele
       {isDeleteConfirmOpen && itemToDelete && (
         <Modal isOpen={true} onClose={cancelDelete} title="Delete Food">
           <div className="space-y-6">
-            <p className="text-stone-600">
-              Are you sure you want to delete <span className="font-semibold">"{itemToDelete.name}"</span>?
+            <p className="text-[var(--color-text-secondary)]">
+              Delete <span className="font-semibold text-[var(--color-text-primary)]">&ldquo;{itemToDelete.name}&rdquo;</span>?
             </p>
-            <div className="flex space-x-3">
-                <button
-                  onClick={cancelDelete}
-                  disabled={saving}
-                  className="flex-1 py-3 px-4 border border-stone-200 text-stone-700 rounded-xl hover:bg-stone-50 transition-colors focus:outline-none focus:ring-2 focus:ring-stone-300 disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmDeleteSavedFood}
-                  disabled={saving}
-                  className="flex-1 py-3 px-4 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-400 disabled:opacity-50"
-                >
-                  {saving ? 'Deleting...' : 'Delete'}
-                </button>
+            <div className="flex gap-3">
+                <button type="button" onClick={cancelDelete} disabled={saving} className="flex-1 btn-ghost py-3">Cancel</button>
+                <button type="button" onClick={confirmDeleteSavedFood} disabled={saving} className="btn-danger">{saving ? 'Deleting…' : 'Delete'}</button>
             </div>
           </div>
         </Modal>
