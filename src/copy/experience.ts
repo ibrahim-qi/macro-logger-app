@@ -13,21 +13,45 @@ export function getReviewLoadingTitle(transcript: string | null): string {
 }
 
 /** Short label for the parse footer button only. */
-export function getParseLoadingLabel(_mode: 'voice' | 'text', transcript: string | null): string {
+export function getParseLoadingLabel(mode: 'voice' | 'text', transcript: string | null): string {
+  if (mode === 'voice' && !transcript?.trim()) return 'Transcribing…';
   return transcript?.trim() ? 'Analysing…' : 'One moment…';
 }
 
-/** Calm sublabel during AI parse — builds trust. */
-export function getParseLoadingSublabel(transcript: string | null): string {
+/** Calm sublabel during AI parse — builds trust without overclaiming research. */
+export function getParseLoadingSublabel(mode: 'voice' | 'text', transcript: string | null): string {
+  if (mode === 'voice' && !transcript?.trim()) {
+    return 'Turning your voice into a nutrition breakdown';
+  }
   if (!transcript?.trim()) {
     return 'Preparing a private nutrition breakdown';
   }
-  return 'Estimating calories and macros from what you said';
+  return 'Estimating nutrition from your description';
+}
+
+/** Shown in review after parse when UK web lookup ran. */
+export function getParseResearchNote(response: {
+  research_used?: boolean;
+  parse_path?: 'fast' | 'research';
+  research_available?: boolean;
+}): string | null {
+  if (response.research_used) {
+    return 'Some items were checked against UK nutrition sources.';
+  }
+  if (response.parse_path === 'research' && response.research_available === false) {
+    return 'UK web lookup is not configured — double-check branded or vague items.';
+  }
+  return null;
 }
 
 /** Status line shown inside the parse loading animation. */
-export function getParseStageLabel(transcript: string | null, stage: 'wait' | 'transcript' | 'breakdown'): string {
-  if (stage === 'wait') return 'Listening…';
+export function getParseStageLabel(
+  mode: 'voice' | 'text',
+  transcript: string | null,
+  stage: 'wait' | 'transcribe' | 'transcript' | 'breakdown',
+): string {
+  if (stage === 'wait') return mode === 'voice' ? 'Transcribing…' : 'Analysing…';
+  if (stage === 'transcribe') return 'Transcribing…';
   if (stage === 'transcript') return 'Got it';
   if (!transcript?.trim()) return 'Analysing…';
   return 'Building your breakdown';

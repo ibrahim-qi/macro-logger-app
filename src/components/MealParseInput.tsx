@@ -10,7 +10,7 @@ import {
 import { useAudioRecorder } from '../hooks/useAudioRecorder';
 import { SahhaMark } from './SahhaBrand';
 import type { ParseMealResponse } from '../types/mealParse';
-import { formatInvokeError, invokeParseMeal, invokeTranscribeMeal } from '../utils/parseMeal';
+import { formatInvokeError, invokeParseMeal, invokeParseMealVoice } from '../utils/parseMeal';
 import { assertRecordingHasSpeech, normalizeAudioMimeType } from '../utils/transcriptValidation';
 import { hapticLight, hapticMedium } from '../utils/haptics';
 import { getParseLoadingLabel } from '../copy/experience';
@@ -148,6 +148,7 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
     hapticLight();
 
     setLoading(true);
+    let reviewOpened = false;
 
     try {
       const { base64, mimeType, durationMs, peakLevel } = await stopRecording();
@@ -156,27 +157,36 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
       const audioBytes = Math.floor((base64.length * 3) / 4);
       assertRecordingHasSpeech(durationMs, peakLevel, audioBytes);
 
-      const { transcript } = await invokeTranscribeMeal({
-        audio: base64,
-        mimeType: normalizeAudioMimeType(mimeType),
-      });
+      onParseStart?.({ mode: 'voice' });
+      reviewOpened = true;
+
+      const data = await invokeParseMealVoice(
+        {
+          audio: base64,
+          mimeType: normalizeAudioMimeType(mimeType),
+        },
+        {
+          onTranscript: (transcript) => {
+            if (!isCurrentParse(generation)) return;
+            setLastTranscript(transcript);
+            setText(transcript);
+            onTranscript?.(transcript);
+          },
+        },
+      );
       if (!isCurrentParse(generation)) return;
 
       hapticLight();
-      setLastTranscript(transcript);
-      setText(transcript);
-      onParseStart?.({ mode: 'voice', previewText: transcript });
-      onTranscript?.(transcript);
-
-      const data = await invokeParseMeal({ text: transcript });
-      if (!isCurrentParse(generation)) return;
-
-      onParsed({ ...data, transcript });
+      const transcript = data.transcript?.trim() ?? '';
+      onParsed({ ...data, transcript: transcript || undefined });
     } catch (err: unknown) {
       if (!isCurrentParse(generation)) return;
       const message = formatInvokeError(err);
-      setError(message);
-      onParseError?.(message);
+      if (reviewOpened) {
+        onParseError?.(message);
+      } else {
+        setError(message);
+      }
     } finally {
       finishingRef.current = false;
       if (isCurrentParse(generation)) setLoading(false);

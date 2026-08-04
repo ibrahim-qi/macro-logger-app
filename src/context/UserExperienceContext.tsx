@@ -8,19 +8,20 @@ import React, {
 } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import type { ExperienceContext, UserGoals, UserProfile } from '../types/experience';
-import { computeStreak, datesFromTimestamps } from '../utils/streak';
+import { computeStreak, datesFromTimestamps, todayDateKey } from '../utils/streak';
 import {
-  formatDateKey,
   getFirstName,
   getMealPeriod,
   getTimeOfDay,
 } from '../utils/experience';
-import { localDayBounds } from '../utils/localDate';
+import { todayDayBounds, dateKeyInTimezone } from '../utils/localDate';
 import { ensureProfile, fetchProfile, syncProfileTimezone, updateDisplayName } from '../utils/profile';
+import { resolveUserTimezone } from '../utils/userTimezone';
 import { supabase } from '../supabaseClient';
 
 interface UserExperienceValue {
   profile: UserProfile | null;
+  timezone: string;
   experience: ExperienceContext;
   loading: boolean;
   needsName: boolean;
@@ -63,8 +64,8 @@ async function fetchGoals(userId: string): Promise<UserGoals | null> {
   return data;
 }
 
-async function fetchTodayTotals(userId: string) {
-  const { dayStart, dayEnd } = localDayBounds(new Date());
+async function fetchTodayTotals(userId: string, timeZone: string) {
+  const { dayStart, dayEnd } = todayDayBounds(timeZone);
 
   const { data, error } = await supabase
     .from('food_entries')
@@ -92,7 +93,7 @@ async function fetchTodayTotals(userId: string) {
   return { totals, entryCount: data.length };
 }
 
-async function fetchStreak(userId: string): Promise<number> {
+async function fetchStreak(userId: string, timeZone: string): Promise<number> {
   const since = new Date();
   since.setDate(since.getDate() - 60);
 
@@ -103,13 +104,16 @@ async function fetchStreak(userId: string): Promise<number> {
     .gte('created_at', since.toISOString());
 
   if (error || !data) return 0;
-  return computeStreak(datesFromTimestamps(data.map((row) => row.created_at)));
+  return computeStreak(
+    datesFromTimestamps(data.map((row) => row.created_at), timeZone),
+    todayDateKey(timeZone),
+  );
 }
 
-async function fetchWeeklyDaysLogged(userId: string): Promise<number | null> {
+async function fetchWeeklyDaysLogged(userId: string, timeZone: string): Promise<number | null> {
   const { data, error } = await supabase.rpc('get_weekly_summary', {
     p_user_id: userId,
-    p_target_date: formatDateKey(),
+    p_target_date: dateKeyInTimezone(timeZone),
   });
 
   if (error || !data?.length) return null;
@@ -168,24 +172,20 @@ export function UserExperienceProvider({
   const refresh = useCallback(async () => {
     const userId = session.user.id;
 
-    const [
-      profileRow,
-      goals,
-      today,
-      streak,
-      weeklyDaysLogged,
-    ] = await Promise.all([
-      fetchProfile(userId).then(async (row) => {
-        const resolved = row ?? await ensureProfile(userId, session.user.email);
-        if (resolved) {
-          await syncProfileTimezone(userId);
-        }
-        return resolved;
-      }),
+    const profileRow = await fetchProfile(userId).then(async (row) => {
+      const resolved = row ?? await ensureProfile(userId, session.user.email);
+      if (!resolved) return null;
+      await syncProfileTimezone(userId);
+      return (await fetchProfile(userId)) ?? resolved;
+    });
+
+    const timeZone = resolveUserTimezone(profileRow);
+
+    const [goals, today, streak, weeklyDaysLogged] = await Promise.all([
       fetchGoals(userId),
-      fetchTodayTotals(userId),
-      fetchStreak(userId),
-      fetchWeeklyDaysLogged(userId),
+      fetchTodayTotals(userId, timeZone),
+      fetchStreak(userId, timeZone),
+      fetchWeeklyDaysLogged(userId, timeZone),
     ]);
 
     setProfile(profileRow);
@@ -231,6 +231,7 @@ export function UserExperienceProvider({
   const value = useMemo(
     () => ({
       profile,
+      timezone: resolveUserTimezone(profile),
       experience,
       loading,
       needsName,

@@ -1,6 +1,7 @@
 /** Whisper prompt — max ~224 tokens; steers spelling/style for meal logging. */
+
 const STT_VOCAB =
-  'Meal log only. Transcribe what the user says they ate. If silent or unclear, return empty. chicken breast, scrambled eggs, porridge, oats, Greek yogurt, protein shake, rice, salmon, broccoli, banana, toast, latte, grams, millilitres.';
+  'Meal log only. Transcribe exactly what the user says they ate, including numbers. If silent or unclear, return empty.';
 
 export function buildTranscriptionPrompt(savedFoodNames: string[] = []): string {
   if (!savedFoodNames.length) return STT_VOCAB;
@@ -11,5 +12,5 @@ export function buildTranscriptionPrompt(savedFoodNames: string[] = []): string 
     .filter(Boolean)
     .join(', ');
 
-  return personal ? `${STT_VOCAB} ${personal}.` : STT_VOCAB;
+  return personal ? `${STT_VOCAB} User foods: ${personal}.` : STT_VOCAB;
 }

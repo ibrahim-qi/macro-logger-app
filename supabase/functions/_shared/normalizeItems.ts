@@ -7,6 +7,8 @@ export interface ParsedFoodItem {
   quantity: number;
   confidence?: 'high' | 'medium' | 'low';
   from_saved_food?: boolean;
+  portion_assumption?: string;
+  source_note?: string;
 }
 
 /** Typical max for unlabeled counts (slices, pieces, etc.) */
@@ -71,16 +73,32 @@ export function sanitizeQuantity(item: ParsedFoodItem): ParsedFoodItem {
   };
 }
 
-export function normalizeItems(items: ParsedFoodItem[]): ParsedFoodItem[] {
-  return items.map((item) =>
-    sanitizeQuantity({
-      food_name: String(item.food_name).trim(),
-      calories: Math.max(0, Number(item.calories) || 0),
-      protein: Math.max(0, Number(item.protein) || 0),
-      carbs: Math.max(0, Number(item.carbs) || 0),
-      fats: Math.max(0, Number(item.fats) || 0),
-      quantity: Math.max(0.01, Number(item.quantity) || 1),
-      confidence: item.confidence,
-    }),
-  );
+export interface NormalizeItemsOptions {
+  /** Default true — set false for benchmark A/B against raw model output */
+  sanitizeQuantity?: boolean;
+}
+
+function baseNormalizeItem(item: ParsedFoodItem): ParsedFoodItem {
+  return {
+    food_name: String(item.food_name).trim(),
+    calories: Math.max(0, Number(item.calories) || 0),
+    protein: Math.max(0, Number(item.protein) || 0),
+    carbs: Math.max(0, Number(item.carbs) || 0),
+    fats: Math.max(0, Number(item.fats) || 0),
+    quantity: Math.max(0.01, Number(item.quantity) || 1),
+    confidence: item.confidence,
+    portion_assumption: item.portion_assumption?.trim() || undefined,
+    source_note: item.source_note?.trim() || undefined,
+  };
+}
+
+export function normalizeItems(
+  items: ParsedFoodItem[],
+  options?: NormalizeItemsOptions,
+): ParsedFoodItem[] {
+  const shouldSanitize = options?.sanitizeQuantity !== false;
+  return items.map((item) => {
+    const base = baseNormalizeItem(item);
+    return shouldSanitize ? sanitizeQuantity(base) : base;
+  });
 }

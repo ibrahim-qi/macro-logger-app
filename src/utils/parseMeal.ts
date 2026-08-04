@@ -2,6 +2,9 @@ import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from '../supabaseClient';
 import type { ParseMealResponse, TranscribeMealResponse } from '../types/mealParse';
 
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
 async function readFunctionError(error: FunctionsHttpError): Promise<string | null> {
   const response = error.context as Response | undefined;
   if (!response?.json) return null;
@@ -31,6 +34,37 @@ async function invokeMealFunction<T>(body: Record<string, unknown>) {
   return data;
 }
 
+async function readNdjsonStream(
+  response: Response,
+  onEvent: (event: Record<string, unknown>) => void,
+) {
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('Meal parser returned an empty response');
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      onEvent(JSON.parse(trimmed) as Record<string, unknown>);
+    }
+  }
+
+  const tail = buffer.trim();
+  if (tail) {
+    onEvent(JSON.parse(tail) as Record<string, unknown>);
+  }
+}
+
 export async function invokeTranscribeMeal(body: { audio: string; mimeType: string }) {
   const data = await invokeMealFunction<TranscribeMealResponse>({
     ...body,
@@ -45,17 +79,124 @@ export async function invokeTranscribeMeal(body: { audio: string; mimeType: stri
   return { transcript };
 }
 
-export async function invokeParseMeal(body: { text: string }) {
-  const data = await invokeMealFunction<ParseMealResponse>({
-    text: body.text.trim(),
-    action: 'parse',
-  });
+export async function invokeParseMeal(body: {
+  text?: string;
+  audio?: string;
+  mimeType?: string;
+}) {
+  const payload: Record<string, unknown> = { action: 'parse' };
+
+  if (body.audio) {
+    payload.audio = body.audio;
+    payload.mimeType = body.mimeType ?? 'audio/webm';
+  } else if (body.text?.trim()) {
+    payload.text = body.text.trim();
+  } else {
+    throw new Error('Meal description text or audio is required.');
+  }
+
+  const data = await invokeMealFunction<ParseMealResponse>(payload);
 
   if (!data?.items?.length) {
     throw new Error('No food items were found in that description.');
   }
 
   return data;
+}
+
+async function getFreshAccessToken(): Promise<string> {
+  const { data: { session: initial }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError || !initial?.access_token) {
+    throw new Error('Your session expired. Sign out and sign back in.');
+  }
+
+  const expiresAt = initial.expires_at ?? 0;
+  const now = Math.floor(Date.now() / 1000);
+  if (expiresAt - now > 60) {
+    return initial.access_token;
+  }
+
+  const { data: { session: refreshed }, error: refreshError } = await supabase.auth.refreshSession();
+  if (refreshError || !refreshed?.access_token) {
+    throw new Error('Your session expired. Sign out and sign back in.');
+  }
+
+  return refreshed.access_token;
+}
+
+/** Voice parse over one connection — streams transcript before macros finish. */
+export async function invokeParseMealVoice(
+  body: { audio: string; mimeType: string },
+  callbacks?: { onTranscript?: (transcript: string) => void },
+): Promise<ParseMealResponse> {
+  const accessToken = await getFreshAccessToken();
+  const response = await fetch(`${supabaseUrl}/functions/v1/parse-meal`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      apikey: supabaseAnonKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      action: 'parse',
+      stream: true,
+      audio: body.audio,
+      mimeType: body.mimeType ?? 'audio/webm',
+    }),
+  });
+
+  if (!response.ok) {
+    let message = 'Meal parser failed. Sign in again or try in a moment.';
+    try {
+      const payload = await response.json() as { error?: string };
+      if (payload.error) message = payload.error;
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+
+  let parsedMeal: ParseMealResponse | undefined;
+  let streamError: Error | null = null;
+
+  await readNdjsonStream(response, (event) => {
+    if (event.event === 'transcript' && typeof event.transcript === 'string') {
+      const transcript = event.transcript.trim();
+      if (transcript) callbacks?.onTranscript?.(transcript);
+      return;
+    }
+
+    if (event.event === 'error' && typeof event.error === 'string') {
+      streamError = new Error(event.error);
+      return;
+    }
+
+    if (event.event === 'result' && Array.isArray(event.items)) {
+      parsedMeal = {
+        items: event.items as ParseMealResponse['items'],
+        notes: typeof event.notes === 'string' ? event.notes : undefined,
+        transcript: typeof event.transcript === 'string' ? event.transcript : undefined,
+        research_used: event.research_used === true,
+        searches_run: typeof event.searches_run === 'number' ? event.searches_run : undefined,
+        parse_path: event.parse_path === 'fast' || event.parse_path === 'research'
+          ? event.parse_path
+          : undefined,
+        research_available: typeof event.research_available === 'boolean'
+          ? event.research_available
+          : undefined,
+      };
+    }
+  });
+
+  if (streamError !== null) {
+    throw streamError;
+  }
+
+  if (!parsedMeal || parsedMeal.items.length === 0) {
+    throw new Error('No food items were found in that description.');
+  }
+
+  return parsedMeal;
 }
 
 export function formatInvokeError(error: unknown): string {

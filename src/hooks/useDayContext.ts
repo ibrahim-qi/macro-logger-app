@@ -11,14 +11,14 @@ export interface DayContext {
   dayCalories: number;
 }
 
-export function useDayContext(session: Session, selectedDate: Date) {
+export function useDayContext(session: Session, selectedDate: Date, timeZone?: string) {
   const [context, setContext] = useState<DayContext | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     const fetchContext = async () => {
-      const { dayStart, dayEnd } = localDayBounds(selectedDate);
+      const { dayStart, dayEnd } = localDayBounds(selectedDate, timeZone);
 
       const [goalsRes, entriesRes] = await Promise.all([
         supabase
@@ -49,7 +49,7 @@ export function useDayContext(session: Session, selectedDate: Date) {
 
     fetchContext();
     return () => { cancelled = true; };
-  }, [session.user.id, selectedDate]);
+  }, [session.user.id, selectedDate, timeZone]);
 
   return context;
 }

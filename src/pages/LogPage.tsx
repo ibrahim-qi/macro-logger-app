@@ -13,6 +13,7 @@ import { getLogSuccessToast } from '../copy/experience';
 import { supabase } from '../supabaseClient';
 import { hapticSuccess } from '../utils/haptics';
 import { createTimestampForDate } from '../utils/localDate';
+import { formatInvokeError, invokeParseMeal } from '../utils/parseMeal';
 import type { ParseMealResponse } from '../types/mealParse';
 
 interface LogPageProps {
@@ -28,8 +29,8 @@ const LogPage: React.FC<LogPageProps> = ({ session }) => {
   const [parseError, setParseError] = useState<string | null>(null);
   const [logDate, setLogDate] = useState<Date>(new Date());
   const [showSaved, setShowSaved] = useState(false);
-  const dayContext = useDayContext(session, logDate);
-  const { refresh: refreshExperience } = useUserExperience();
+  const { refresh: refreshExperience, timezone } = useUserExperience();
+  const dayContext = useDayContext(session, logDate, timezone);
   const { showToast } = useToast();
 
   const [parseMode, setParseMode] = useState<'voice' | 'text' | null>(null);
@@ -73,6 +74,27 @@ const LogPage: React.FC<LogPageProps> = ({ session }) => {
     setReviewLoading(false);
     setParseError(message);
     setReviewOpen(true);
+  }, []);
+
+  const handleParseRetry = useCallback(async (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+
+    setReviewLoading(true);
+    setParseError(null);
+    setParseResult(null);
+    setReviewTranscript(trimmed);
+
+    try {
+      const data = await invokeParseMeal({ text: trimmed });
+      setParseResult(data);
+      setReviewTranscript(data.transcript ?? trimmed);
+      setParseError(null);
+    } catch (err: unknown) {
+      setParseError(formatInvokeError(err));
+    } finally {
+      setReviewLoading(false);
+    }
   }, []);
 
   const handleSavedFoodSelect = async (food: SavedFoodItem) => {
@@ -146,6 +168,7 @@ const LogPage: React.FC<LogPageProps> = ({ session }) => {
         dayContext={dayContext}
         onClose={resetReview}
         onLogged={handleLogged}
+        onRetry={handleParseRetry}
       />
     </div>
   );

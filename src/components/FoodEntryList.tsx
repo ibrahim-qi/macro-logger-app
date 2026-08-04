@@ -8,7 +8,7 @@ import GoalsSettingsForm from './GoalsSettingsForm';
 import TodayHero from './TodayHero';
 import DatePicker from './DatePicker';
 import { TodayPageSkeleton } from './Skeleton';
-import { computeStreak, datesFromTimestamps } from '../utils/streak';
+import { computeStreak, datesFromTimestamps, todayDateKey } from '../utils/streak';
 import TabNavigation from './TabNavigation';
 import EntriesTab from './EntriesTab';
 import GoalsTab from './GoalsTab';
@@ -55,7 +55,7 @@ const isToday = (date: Date): boolean => {
 const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
   const location = useLocation();
   const { showToast } = useToast();
-  const { refresh: refreshExperience } = useUserExperience();
+  const { refresh: refreshExperience, timezone } = useUserExperience();
   const [entries, setEntries] = useState<FoodEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -104,7 +104,7 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
   const fetchEntries = useCallback(async (date: Date) => {
     setLoading(true);
     setError(null);
-    const { dayStart, dayEnd, dateKey } = localDayBounds(date);
+    const { dayStart, dayEnd, dateKey } = localDayBounds(date, timezone);
 
     try {
       const { data, error: fetchError } = await supabase
@@ -125,7 +125,7 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
     } finally {
       setLoading(false);
     }
-  }, [session.user.id]);
+  }, [session.user.id, timezone]);
 
   // Function to fetch user goals
   const fetchStreak = useCallback(async () => {
@@ -138,11 +138,14 @@ const FoodEntryList: React.FC<FoodEntryListProps> = ({ session }) => {
         .eq('user_id', session.user.id)
         .gte('created_at', since.toISOString());
       if (error) throw error;
-      setStreak(computeStreak(datesFromTimestamps((data ?? []).map((r) => r.created_at))));
+      setStreak(computeStreak(
+        datesFromTimestamps((data ?? []).map((r) => r.created_at), timezone),
+        todayDateKey(timezone),
+      ));
     } catch {
       setStreak(0);
     }
-  }, [session.user.id]);
+  }, [session.user.id, timezone]);
 
   const fetchUserGoals = useCallback(async () => {
     try {

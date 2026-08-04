@@ -8,76 +8,53 @@ export interface SavedFoodMacros {
   fats: number;
 }
 
-const MATCH_THRESHOLD = 0.72;
-const MIN_CONTAINS_LENGTH = 5;
-
-function tokenize(name: string): string[] {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/)
-    .filter((token) => token.length > 1);
+function normalizeName(name: string): string {
+  return name.toLowerCase().trim();
 }
 
-export function scoreFoodNameMatch(parsedName: string, savedName: string): number {
-  const parsed = parsedName.toLowerCase().trim();
-  const saved = savedName.toLowerCase().trim();
-
-  if (!parsed || !saved) return 0;
-  if (parsed === saved) return 1;
-
-  // Avoid matching generic words to longer saved names (e.g. "toast" -> "avocado toast")
-  if (parsed.includes(saved) || saved.includes(parsed)) {
-    const shorter = Math.min(parsed.length, saved.length);
-    const longer = Math.max(parsed.length, saved.length);
-    if (shorter >= MIN_CONTAINS_LENGTH && shorter / longer >= 0.45) return 0.88;
+/** Conservative singular form for egg/toast-style plurals only — not fuzzy matching. */
+function singularize(name: string): string {
+  // berry → berries, not cookie → cookies (…kies is just … + s)
+  if (name.endsWith('ies') && name.length > 4 && !/(?:ckies|ggies|ppies|ovies|eries|kies)$/.test(name)) {
+    return `${name.slice(0, -3)}y`;
   }
-
-  const parsedTokens = new Set(tokenize(parsedName));
-  const savedTokens = new Set(tokenize(savedName));
-  if (parsedTokens.size === 0 || savedTokens.size === 0) return 0;
-
-  let overlap = 0;
-  for (const token of parsedTokens) {
-    if (savedTokens.has(token)) overlap++;
+  if (name.endsWith('oes') && name.length > 4) {
+    return name.slice(0, -2);
   }
-
-  return overlap / Math.max(parsedTokens.size, savedTokens.size);
+  if (/(?:ses|xes|zes|ches|shes)$/.test(name) && name.length > 4) {
+    return name.slice(0, -2);
+  }
+  if (name.endsWith('s') && !name.endsWith('ss') && name.length > 3) {
+    return name.slice(0, -1);
+  }
+  return name;
 }
 
-export function findBestSavedFoodMatch(
-  parsedName: string,
-  savedFoods: SavedFoodMacros[],
-): SavedFoodMacros | null {
-  let best: SavedFoodMacros | null = null;
-  let bestScore = 0;
-
-  for (const saved of savedFoods) {
-    const score = scoreFoodNameMatch(parsedName, saved.food_name);
-    if (score > bestScore) {
-      bestScore = score;
-      best = saved;
-    }
-  }
-
-  return bestScore >= MATCH_THRESHOLD ? best : null;
+function lookupSavedFood(
+  foodName: string,
+  savedByName: Map<string, SavedFoodMacros>,
+): SavedFoodMacros | undefined {
+  const normalized = normalizeName(foodName);
+  return savedByName.get(normalized) ?? savedByName.get(singularize(normalized));
 }
 
-/** Overwrite parsed macros when a saved food matches — deterministic, not LLM-dependent. */
+/** Override AI macros when the parsed name matches a saved food (exact or singular/plural). */
 export function applySavedFoods(
   items: ParsedFoodItem[],
   savedFoods: SavedFoodMacros[],
 ): ParsedFoodItem[] {
   if (!savedFoods.length) return items;
 
-  const usedSaved = new Set<string>();
+  const savedByName = new Map<string, SavedFoodMacros>();
+  for (const food of savedFoods) {
+    const normalized = normalizeName(food.food_name);
+    savedByName.set(normalized, food);
+    savedByName.set(singularize(normalized), food);
+  }
 
   return items.map((item) => {
-    const candidates = savedFoods.filter((saved) => !usedSaved.has(saved.food_name.toLowerCase()));
-    const match = findBestSavedFoodMatch(item.food_name, candidates);
+    const match = lookupSavedFood(item.food_name, savedByName);
     if (!match) return item;
-
-    usedSaved.add(match.food_name.toLowerCase());
 
     return {
       ...item,
@@ -88,6 +65,8 @@ export function applySavedFoods(
       fats: Math.max(0, Number(match.fats) || 0),
       confidence: 'high',
       from_saved_food: true,
+      portion_assumption: undefined,
+      source_note: 'Your saved food',
     };
   });
 }

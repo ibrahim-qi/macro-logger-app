@@ -8,6 +8,10 @@ export interface ParsedFoodItem {
   fats: number;
   quantity: number;
   confidence?: ParseConfidence;
+  /** What the parser inferred beyond the user's words (e.g. slice weight, raw vs cooked) */
+  portion_assumption?: string;
+  /** UK source used for the estimate (e.g. CoFID, Tesco UK) */
+  source_note?: string;
   /** True when macros were filled from the user's saved foods list */
   from_saved_food?: boolean;
 }
@@ -16,6 +20,10 @@ export interface ParseMealResponse {
   items: ParsedFoodItem[];
   notes?: string;
   transcript?: string;
+  research_used?: boolean;
+  searches_run?: number;
+  parse_path?: 'fast' | 'research';
+  research_available?: boolean;
 }
 
 export interface TranscribeMealResponse {

@@ -88,12 +88,11 @@ export function zonedLocalToUtc(
   return new Date(utcMs);
 }
 
-/** ISO UTC bounds for querying a calendar day in the given IANA timezone */
-export function localDayBounds(
-  date: Date,
-  timeZone: string = getBrowserTimezone(),
+/** ISO UTC bounds for a calendar day (YYYY-MM-DD) in the given IANA timezone */
+export function localDayBoundsForDateKey(
+  dateKey: string,
+  timeZone: string,
 ): { dayStart: string; dayEnd: string; dateKey: string } {
-  const dateKey = formatLocalDateKey(date);
   const [year, month, day] = dateKey.split('-').map(Number);
   const start = zonedLocalToUtc(year, month, day, 0, 0, 0, 0, timeZone);
   const end = zonedLocalToUtc(year, month, day, 23, 59, 59, 999, timeZone);
@@ -103,6 +102,19 @@ export function localDayBounds(
     dayStart: start.toISOString(),
     dayEnd: end.toISOString(),
   };
+}
+
+/** Today in the given IANA timezone */
+export function todayDayBounds(timeZone: string = getBrowserTimezone()) {
+  return localDayBoundsForDateKey(dateKeyInTimezone(timeZone), timeZone);
+}
+
+/** ISO UTC bounds for querying a calendar day in the given IANA timezone */
+export function localDayBounds(
+  date: Date,
+  timeZone: string = getBrowserTimezone(),
+): { dayStart: string; dayEnd: string; dateKey: string } {
+  return localDayBoundsForDateKey(formatLocalDateKey(date), timeZone);
 }
 
 /** Current calendar date in an IANA timezone as YYYY-MM-DD */

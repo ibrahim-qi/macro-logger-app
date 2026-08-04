@@ -47,6 +47,20 @@ export function sumBenchmarkItems(items: BenchmarkItem[]): BenchmarkTotals {
 /** Curated set — expand over time with your own logged meals + verified labels */
 export const BENCHMARK_CASES: BenchmarkCase[] = [
   {
+    id: 'two-boiled-eggs',
+    input: '2 boiled eggs',
+    difficulty: 'easy',
+    source: 'USDA: 1 large egg ~6.3g protein, ~78 kcal',
+    items: [{ name: 'boiled egg', calories: 78, protein: 6.3, carbs: 0.6, fats: 5.3, quantity: 2 }],
+  },
+  {
+    id: 'one-boiled-egg',
+    input: 'one boiled egg',
+    difficulty: 'easy',
+    source: 'USDA: 1 large egg ~6.3g protein',
+    items: [{ name: 'boiled egg', calories: 78, protein: 6.3, carbs: 0.6, fats: 5.3, quantity: 1 }],
+  },
+  {
     id: 'two-eggs-toast',
     input: '2 scrambled eggs and 2 slices of white toast with butter',
     difficulty: 'medium',
@@ -160,5 +174,54 @@ export const BENCHMARK_CASES: BenchmarkCase[] = [
       { name: 'skyr', calories: 90, protein: 15, carbs: 6, fats: 0.5, quantity: 1 },
       { name: 'peanut butter', calories: 95, protein: 4, carbs: 3, fats: 8, quantity: 1 },
     ],
+  },
+  {
+    id: 'greggs-sausage-roll',
+    input: "Greggs sausage roll",
+    difficulty: 'easy',
+    source: 'Greggs UK official (2024): 348 kcal per roll (103g), 9.2g protein',
+    items: [{ name: 'sausage roll', calories: 348, protein: 9.2, carbs: 24, fats: 24, quantity: 1 }],
+  },
+  {
+    id: 'costa-large-latte',
+    input: 'Costa large latte with semi-skimmed milk',
+    difficulty: 'medium',
+    source: 'Costa UK: large latte semi-skimmed in store ~472ml, 198 kcal, ~15g protein',
+    items: [{ name: 'latte', calories: 198, protein: 14.9, carbs: 21.4, fats: 6.8, quantity: 1 }],
+  },
+  {
+    id: 'pret-ham-cheese',
+    input: 'Pret ham and cheese baguette',
+    difficulty: 'easy',
+    source: 'Pret UK official: Ham & Cheese malted bread, 531 kcal, 30g protein',
+    items: [{ name: 'ham and cheese', calories: 531, protein: 30, carbs: 42.7, fats: 25.8, quantity: 1 }],
+  },
+  {
+    id: 'two-slices-sourdough',
+    input: '2 slices of sourdough toast',
+    difficulty: 'medium',
+    source: 'UK average thick sourdough slice ~95 kcal; white toast benchmark ~80 kcal',
+    items: [{ name: 'sourdough toast', calories: 95, protein: 3.5, carbs: 17, fats: 1.2, quantity: 2 }],
+  },
+  {
+    id: 'plain-kefir-200ml',
+    input: '200ml plain kefir',
+    difficulty: 'medium',
+    source: 'CoFID-style: 200ml plain low-fat kefir ~96 kcal, ~7g protein',
+    items: [{ name: 'plain kefir', calories: 96, protein: 7, carbs: 9, fats: 3.6, quantity: 1 }],
+  },
+  {
+    id: 'chicken-thighs-180g',
+    input: '180g boneless skinless chicken thighs',
+    difficulty: 'medium',
+    source: 'USDA cooked thigh meat ~177 kcal/100g → ~318 kcal for 180g',
+    items: [{ name: 'chicken thigh', calories: 318, protein: 38, carbs: 0, fats: 18, quantity: 1 }],
+  },
+  {
+    id: 'two-chicken-thighs',
+    input: '2 boneless skinless chicken thighs',
+    difficulty: 'medium',
+    source: 'UK average medium cooked thigh ~200 kcal each (size varies widely)',
+    items: [{ name: 'chicken thigh', calories: 200, protein: 26, carbs: 0, fats: 10, quantity: 2 }],
   },
 ];

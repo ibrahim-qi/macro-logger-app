@@ -25,6 +25,15 @@ export interface CaseScore {
   predictedItems: ParsedItem[];
 }
 
+export interface ItemBreakdown {
+  expectedName: string;
+  matched: boolean;
+  expectedLineCalories: number;
+  predictedLineCalories: number;
+  calorieErrorPct: number;
+  predictedName?: string;
+}
+
 function pctError(expected: number, predicted: number): number {
   if (expected <= 0) return predicted <= 0 ? 0 : 100;
   return (Math.abs(predicted - expected) / expected) * 100;
@@ -41,6 +50,50 @@ function nameSimilarity(a: string, b: string): number {
   let overlap = 0;
   for (const t of ta) if (tb.has(t)) overlap++;
   return overlap / Math.max(ta.size, tb.size);
+}
+
+export function getItemBreakdown(
+  testCase: BenchmarkCase,
+  predictedItems: ParsedItem[],
+): ItemBreakdown[] {
+  const used = new Set<number>();
+
+  return testCase.items.map((exp) => {
+    let bestIdx = -1;
+    let bestSim = 0;
+    for (let i = 0; i < predictedItems.length; i++) {
+      if (used.has(i)) continue;
+      const sim = nameSimilarity(exp.name, predictedItems[i].food_name);
+      if (sim > bestSim) {
+        bestSim = sim;
+        bestIdx = i;
+      }
+    }
+
+    const expectedLineCalories = exp.calories * exp.quantity;
+    if (bestIdx === -1 || bestSim < 0.25) {
+      return {
+        expectedName: exp.name,
+        matched: false,
+        expectedLineCalories,
+        predictedLineCalories: 0,
+        calorieErrorPct: 100,
+      };
+    }
+
+    used.add(bestIdx);
+    const pred = predictedItems[bestIdx];
+    const predictedLineCalories = pred.calories * (pred.quantity || 1);
+
+    return {
+      expectedName: exp.name,
+      matched: true,
+      expectedLineCalories,
+      predictedLineCalories,
+      calorieErrorPct: pctError(expectedLineCalories, predictedLineCalories),
+      predictedName: pred.food_name,
+    };
+  });
 }
 
 function sumParsedItems(items: ParsedItem[]): BenchmarkTotals {
@@ -86,11 +139,17 @@ function scoreItemMatching(expected: BenchmarkItem[], predicted: ParsedItem[]): 
   return totalScore / expected.length;
 }
 
-/** Acceptable error bands by difficulty (calorie % error) */
-const ERROR_BANDS: Record<BenchmarkCase['difficulty'], number> = {
+/** Acceptable error bands by difficulty (% error on calories and protein) */
+const CALORIE_ERROR_BANDS: Record<BenchmarkCase['difficulty'], number> = {
   easy: 15,
   medium: 25,
   hard: 40,
+};
+
+const PROTEIN_ERROR_BANDS: Record<BenchmarkCase['difficulty'], number> = {
+  easy: 20,
+  medium: 30,
+  hard: 45,
 };
 
 export function scoreCase(testCase: BenchmarkCase, predictedItems: ParsedItem[]): CaseScore {
@@ -98,6 +157,7 @@ export function scoreCase(testCase: BenchmarkCase, predictedItems: ParsedItem[])
   const predicted = sumParsedItems(predictedItems);
 
   const calorieErrorPct = pctError(expected.calories, predicted.calories);
+  const proteinErrorPct = pctError(expected.protein, predicted.protein);
 
   return {
     id: testCase.id,
@@ -105,11 +165,13 @@ export function scoreCase(testCase: BenchmarkCase, predictedItems: ParsedItem[])
     expected,
     predicted,
     calorieErrorPct,
-    proteinErrorPct: pctError(expected.protein, predicted.protein),
+    proteinErrorPct,
     carbsErrorPct: pctError(expected.carbs, predicted.carbs),
     fatsErrorPct: pctError(expected.fats, predicted.fats),
     itemMatchScore: scoreItemMatching(testCase.items, predictedItems),
-    withinBand: calorieErrorPct <= ERROR_BANDS[testCase.difficulty],
+    withinBand:
+      calorieErrorPct <= CALORIE_ERROR_BANDS[testCase.difficulty] &&
+      proteinErrorPct <= PROTEIN_ERROR_BANDS[testCase.difficulty],
     predictedItems,
   };
 }

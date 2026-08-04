@@ -8,13 +8,12 @@ import type { ParsedFoodItem, ParseMealResponse } from '../types/mealParse';
 import type { DayContext } from '../hooks/useDayContext';
 import { sumItemMacros } from '../utils/mealTotals';
 import { hapticLight, hapticSuccess } from '../utils/haptics';
-import { getReviewHint } from '../copy/experience';
+import { getParseLoadingLabel, getParseResearchNote, getReviewHint, getReviewLoadingTitle } from '../copy/experience';
 import { useUserExperience } from '../context/UserExperienceContext';
 import { upsertSavedFoods } from '../utils/savedFoods';
 import { localDayBounds, createTimestampForDate } from '../utils/localDate';
 import { useCountUp } from '../hooks/useCountUp';
 import MealParseLoading, { type ParseMode } from './MealParseLoading';
-import { getParseLoadingLabel, getReviewLoadingTitle } from '../copy/experience';
 
 interface MealParseReviewProps {
   session: Session;
@@ -28,6 +27,7 @@ interface MealParseReviewProps {
   dayContext?: DayContext | null;
   onClose: () => void;
   onLogged: () => void;
+  onRetry?: (text: string) => void;
 }
 
 interface UserGoals {
@@ -63,9 +63,10 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
   dayContext,
   onClose,
   onLogged,
+  onRetry,
 }) => {
   const navigate = useNavigate();
-  const { experience } = useUserExperience();
+  const { experience, timezone } = useUserExperience();
   const [items, setItems] = useState<ReviewItem[]>(() => toReviewItems(result?.items ?? []));
   const [logging, setLogging] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -78,9 +79,16 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
   const [itemsRevealed, setItemsRevealed] = useState(false);
   const [loadingVisible, setLoadingVisible] = useState(loading);
   const [contentReady, setContentReady] = useState(!loading && Boolean(result));
+  const [retryDraft, setRetryDraft] = useState('');
   const menuRef = useRef<HTMLDivElement>(null);
   const wasLoadingRef = useRef(false);
   const lastTranscriptRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (parseError) {
+      setRetryDraft(transcript?.trim() ?? '');
+    }
+  }, [parseError, transcript]);
 
   useEffect(() => {
     if (loading) {
@@ -91,7 +99,7 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
 
     if (result) {
       setContentReady(true);
-      const fadeTimer = window.setTimeout(() => setLoadingVisible(false), 450);
+      const fadeTimer = window.setTimeout(() => setLoadingVisible(false), 100);
       return () => window.clearTimeout(fadeTimer);
     }
 
@@ -108,7 +116,7 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
     setEditingId(null);
     setOpenMenuId(null);
     setItemsRevealed(false);
-    const revealTimer = window.setTimeout(() => setItemsRevealed(true), 50);
+    const revealTimer = window.setTimeout(() => setItemsRevealed(true), 0);
     return () => window.clearTimeout(revealTimer);
   }, [result]);
 
@@ -147,7 +155,7 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
     if (!isOpen) return;
 
     const fetchContext = async () => {
-      const { dayStart, dayEnd } = localDayBounds(selectedDate);
+      const { dayStart, dayEnd } = localDayBounds(selectedDate, timezone);
 
       const [goalsRes, entriesRes] = await Promise.all([
         supabase
@@ -177,7 +185,7 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
     };
 
     fetchContext();
-  }, [isOpen, selectedDate, session.user.id, dayContext]);
+  }, [isOpen, selectedDate, session.user.id, dayContext, timezone]);
 
   useEffect(() => {
     if (!openMenuId) return;
@@ -329,6 +337,9 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
 
   const displayTranscript = transcript ?? result?.transcript ?? null;
   const loadingLabel = getParseLoadingLabel(parseMode, displayTranscript);
+  const researchNote = result ? getParseResearchNote(result) : null;
+  const showParseError = Boolean(parseError) && !loadingVisible;
+  const canRetryParse = Boolean(retryDraft.trim() && onRetry);
 
   if (!isOpen) return null;
 
@@ -337,11 +348,21 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
     onClose();
   };
 
-  const footer = parseError ? (
+  const footer = showParseError ? (
     <div className="flex gap-3">
-      <button type="button" onClick={onClose} className="flex-1 btn-ghost py-3">
+      <button type="button" onClick={onClose} className={`${canRetryParse ? 'flex-1' : 'w-full'} btn-ghost py-3`}>
         Close
       </button>
+      {canRetryParse && (
+        <button
+          type="button"
+          onClick={() => onRetry?.(retryDraft)}
+          disabled={loading}
+          className="flex-1 btn-primary"
+        >
+          {loading ? 'Retrying…' : 'Retry parse'}
+        </button>
+      )}
     </div>
   ) : loadingVisible ? (
     <div className="flex gap-3">
@@ -376,7 +397,13 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={handleDismiss}
-      title={loadingVisible ? getReviewLoadingTitle(displayTranscript) : 'Verify your meal'}
+      title={
+        loadingVisible
+          ? getReviewLoadingTitle(displayTranscript)
+          : showParseError
+            ? 'Could not parse meal'
+            : 'Verify your meal'
+      }
       footer={footer}
       variant="sheet"
     >
@@ -435,6 +462,9 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
               {result?.notes && (
                 <p className="meal-review-context__notes">{result.notes}</p>
               )}
+              {researchNote && (
+                <p className="meal-review-context__notes">{researchNote}</p>
+              )}
             </div>
           )}
 
@@ -452,13 +482,17 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
                 const isVerified = verified.has(item.id);
                 const isEditing = editingId === item.id;
                 const isMenuOpen = openMenuId === item.id;
+                const assumption = item.portion_assumption?.trim();
+                const sourceNote = item.source_note?.trim();
+                const showAssumption = !isVerified && Boolean(assumption || sourceNote);
+                const isUncertain = !isVerified && item.confidence === 'low';
 
                 return (
                   <li
                     key={item.id}
                     id={`meal-review-row-${item.id}`}
-                    className={`meal-review-row ${itemsRevealed ? 'meal-review-row--reveal' : ''} ${isVerified ? 'meal-review-row--verified' : 'meal-review-row--pending'}`}
-                    style={{ animationDelay: `${index * 80}ms` }}
+                    className={`meal-review-row ${itemsRevealed ? 'meal-review-row--reveal' : ''} ${isVerified ? 'meal-review-row--verified' : 'meal-review-row--pending'}${isUncertain ? ' meal-review-row--uncertain' : ''}`}
+                    style={{ animationDelay: `${index * 24}ms` }}
                   >
                     <div className="meal-review-row__main">
                       <div className="meal-review-row__info">
@@ -471,11 +505,24 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
                           carbs={item.carbs * qty}
                           fats={item.fats * qty}
                         />
-                        {item.confidence === 'low' && !isVerified && (
-                          <span className="meal-review-row__hint">Rough estimate</span>
+                        {item.confidence === 'low' && !isVerified && !showAssumption && (
+                          <span className="meal-review-row__hint">Rough estimate — check portion</span>
                         )}
-                        {item.confidence === 'medium' && !isVerified && (
+                        {item.confidence === 'medium' && !isVerified && !showAssumption && (
                           <span className="meal-review-row__hint">Estimated portion</span>
+                        )}
+                        {showAssumption && (
+                          <div className="meal-review-row__assumption">
+                            {assumption && (
+                              <>
+                                <p className="meal-review-row__assumption-label">Assumed</p>
+                                <p className="meal-review-row__assumption-text">{assumption}</p>
+                              </>
+                            )}
+                            {sourceNote && (
+                              <p className="meal-review-row__source">Source: {sourceNote}</p>
+                            )}
+                          </div>
                         )}
                       </div>
                       <span className="meal-review-row__calories tabular-nums">{itemCalories} cal</span>
@@ -662,10 +709,23 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
         )}
       </div>
 
-      {!loadingVisible && parseError && (
-        <p className="mt-2 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-3 text-sm text-red-400">
-          {parseError}
-        </p>
+      {!loadingVisible && showParseError && (
+        <div className="meal-review-retry">
+          <p className="meal-review-retry__error">{parseError}</p>
+          {canRetryParse ? (
+            <label className="meal-review-retry__field">
+              <span className="meal-review-retry__label">Edit what you said and retry</span>
+              <textarea
+                value={retryDraft}
+                onChange={(e) => setRetryDraft(e.target.value)}
+                rows={3}
+                className="input-premium resize-none text-base w-full"
+              />
+            </label>
+          ) : (
+            <p className="meal-review-retry__hint">Try the mic again or type your meal below.</p>
+          )}
+        </div>
       )}
     </Modal>
   );

@@ -141,6 +141,7 @@ In **Supabase Dashboard → Project Settings → Edge Functions → Secrets** (p
 | `NANOGPT_API_KEY` | Your NanoGPT API key | Yes |
 | `NANOGPT_STT_MODEL` | `Whisper-Large-V3` | Optional (default) |
 | `NANOGPT_PARSE_MODEL` | `google/gemini-3.5-flash` | Optional (default) |
+| `SERPER_API_KEY` | [Serper.dev](https://serper.dev) API key for UK nutrition web lookup on branded/ambiguous meals | Recommended for production |
 
 Or via CLI (after linking the project):
 
@@ -148,7 +149,10 @@ Or via CLI (after linking the project):
 supabase secrets set NANOGPT_API_KEY=your_nanogpt_api_key
 supabase secrets set NANOGPT_STT_MODEL=Whisper-Large-V3
 supabase secrets set NANOGPT_PARSE_MODEL=google/gemini-3.5-flash
+supabase secrets set SERPER_API_KEY=your_serper_api_key
 ```
+
+**Research path:** compound meals, UK brands, and ambiguous items (yogurt fat %, milk type, raw vs cooked meat) run interpret → Serper (max 2 UK queries) → estimate. Simple explicit meals use a single fast LLM call. Without `SERPER_API_KEY`, the research path still runs but estimates come from the model only — the review screen will note that UK web lookup is unavailable.
 
 **Optional upgrades** (change secrets only, no code deploy needed):
 
