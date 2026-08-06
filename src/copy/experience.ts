@@ -228,18 +228,30 @@ export function getVoiceLongRecordingHint(): string {
   return 'Long one — tap Done when you\'re finished';
 }
 
-export function getTextParsingCtaLabel(): string {
-  return 'One moment…';
+export function getVoiceMaxDurationHint(secondsRemaining: number): string {
+  if (secondsRemaining <= 0) {
+    return 'Time\'s up — wrapping up your recording…';
+  }
+  return `Wrapping up in ${secondsRemaining}s…`;
 }
 
-/** Short preview for the parse loading sheet — full text stays on the review screen. */
-export function formatParseTranscriptPreview(transcript: string, maxChars = 120): string {
-  const trimmed = transcript.trim().replace(/\s+/g, ' ');
-  if (trimmed.length <= maxChars) return trimmed;
-  const slice = trimmed.slice(0, maxChars);
-  const lastSpace = slice.lastIndexOf(' ');
-  const cut = lastSpace > maxChars * 0.6 ? slice.slice(0, lastSpace) : slice;
-  return `${cut.trim()}…`;
+export function getTranscriptCorrectHint(isTouch = false): string {
+  if (isTouch) {
+    return 'We\'ll restart from your correction.';
+  }
+  return 'We\'ll restart from your correction. Ctrl/⌘+Enter to apply.';
+}
+
+export function getTranscriptCorrectLabel(): string {
+  return 'Edit if we misheard';
+}
+
+export function getTranscriptReparseConfirm(): string {
+  return 'Re-parse from this transcript? Your item edits will be lost.';
+}
+
+export function getTextParsingCtaLabel(): string {
+  return 'One moment…';
 }
 
 export function isLongParseTranscript(transcript: string | null | undefined): boolean {

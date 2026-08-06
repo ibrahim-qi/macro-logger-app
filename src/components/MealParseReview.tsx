@@ -8,7 +8,7 @@ import type { ParsedFoodItem, ParseMealResponse, ParseProgressState } from '../t
 import type { DayContext } from '../hooks/useDayContext';
 import { sumItemMacros } from '../utils/mealTotals';
 import { hapticLight, hapticSuccess } from '../utils/haptics';
-import { getReviewHint, getResearchTrustLine, getParseErrorTitle, getRejectionTitle, isLongParseTranscript } from '../copy/experience';
+import { getReviewHint, getResearchTrustLine, getParseErrorTitle, getRejectionTitle, getTranscriptCorrectLabel, getTranscriptReparseConfirm, isLongParseTranscript } from '../copy/experience';
 import type { ParseErrorKind, ParseRejectionCode } from '../utils/parseRejection.ts';
 import { useUserExperience } from '../context/userExperience';
 import { upsertSavedFoods } from '../utils/savedFoods';
@@ -21,6 +21,7 @@ import {
   scaleItemByReferenceAmount,
 } from '../utils/servingWeight';
 import MealParseLoading from './MealParseLoading';
+import TranscriptCorrectBlock from './TranscriptCorrectBlock';
 
 type ParseMode = 'voice' | 'text';
 
@@ -41,6 +42,8 @@ interface MealParseReviewProps {
   onLogged: () => void;
   onRetry?: (text: string) => void;
   onRetryVoice?: () => void;
+  /** Abort in-flight parse and restart from corrected transcript (skip STT). */
+  onCorrectTranscript?: (text: string) => void;
 }
 
 interface UserGoals {
@@ -113,6 +116,7 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
   onLogged,
   onRetry,
   onRetryVoice,
+  onCorrectTranscript,
 }) => {
   const navigate = useNavigate();
   const { experience, timezone } = useUserExperience();
@@ -123,6 +127,7 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
   const [rememberIds, setRememberIds] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [servingEditId, setServingEditId] = useState<string | null>(null);
+  const [toolsExpandedId, setToolsExpandedId] = useState<string | null>(null);
   const [customGrams, setCustomGrams] = useState('');
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [userGoals, setUserGoals] = useState<UserGoals | null>(null);
@@ -322,6 +327,7 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
   const openServingEdit = (item: ReviewItem) => {
     hapticLight();
     setServingEditId(item.id);
+    setToolsExpandedId(item.id);
     setCustomGrams(String(extractReferenceAmount(item)?.value ?? ''));
     setEditingId(null);
     setOpenMenuId(null);
@@ -470,9 +476,10 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
     ? 'sheet-compact-tall'
     : 'sheet-compact';
   const isRejection = parseErrorKind === 'rejection';
-  const canEditRetryTranscript = isRejection
-    ? parseRejectionReason === 'no_meal_detected' && Boolean((retryDraft.trim() || transcript?.trim()) && onRetry)
-    : Boolean(retryDraft.trim() && onRetry);
+  const errorTranscript = (retryDraft.trim() || transcript?.trim() || '');
+  const canCorrectErrorTranscript = Boolean(onRetry) && Boolean(errorTranscript) && (
+    !isRejection || parseRejectionReason === 'no_meal_detected'
+  );
 
   if (!isOpen) return null;
 
@@ -507,26 +514,29 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
         </button>
       </div>
     ) : (
-      <div className="flex gap-3">
-        <button type="button" onClick={handleDismiss} className={`${canEditRetryTranscript ? 'flex-1' : 'w-full'} btn-ghost py-3`}>
-          Close
-        </button>
-        {canEditRetryTranscript && (
-          <button
-            type="button"
-            onClick={() => onRetry?.(retryDraft)}
-            disabled={loading}
-            className="flex-1 btn-primary"
-          >
-            {loading ? 'Retrying…' : 'Retry parse'}
-          </button>
-        )}
-      </div>
+      <button type="button" onClick={handleDismiss} className="w-full btn-ghost py-3">
+        Close
+      </button>
     )
   ) : loadingVisible ? (
-    <button type="button" onClick={handleDismiss} className="parse-sheet-cancel">
-      Cancel
-    </button>
+    parseMode === 'voice' && onRetryVoice ? (
+      <div className="parse-sheet-actions">
+        <button type="button" onClick={handleDismiss} className="parse-sheet-cancel">
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={() => onRetryVoice()}
+          className="parse-sheet-retake"
+        >
+          Retake
+        </button>
+      </div>
+    ) : (
+      <button type="button" onClick={handleDismiss} className="parse-sheet-cancel">
+        Cancel
+      </button>
+    )
   ) : (
     <div className="meal-review-footer">
       {!allVerified && items.length > 0 && (
@@ -593,6 +603,7 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
             stage={parseProgress?.current ?? null}
             mode={parseMode}
             exiting={contentReady && !loading}
+            onCorrectTranscript={onCorrectTranscript}
           />
         )}
 
@@ -628,10 +639,21 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
 
           {displayTranscript && (
             <div className="meal-review-context">
-              <p className="meal-review-context__said">
-                <span className="section-label">You said</span>
-                <span className="meal-review-context__text">{displayTranscript}</span>
-              </p>
+              <TranscriptCorrectBlock
+                transcript={displayTranscript}
+                label="You said"
+                canEdit={Boolean(onCorrectTranscript)}
+                onCorrect={(text) => {
+                  if (
+                    userTouched
+                    && !window.confirm(getTranscriptReparseConfirm())
+                  ) {
+                    return;
+                  }
+                  onCorrectTranscript?.(text);
+                }}
+                className="meal-review-context__correct"
+              />
               {result.research_used && (
                 <p className="meal-review-context__trust section-label">{getResearchTrustLine()}</p>
               )}
@@ -661,6 +683,7 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
                 const provenance = provenanceLabel(item);
                 const canAdjustWeight = !isVerified && !isEditing && !item.from_saved_food && Boolean(referenceAmount);
                 const isServingEditOpen = servingEditId === item.id;
+                const toolsExpanded = toolsExpandedId === item.id || isEditing || isServingEditOpen;
                 const showServing = !isVerified && !isEditing && Boolean(
                   servingLabel || referenceAmount || item.confidence === 'medium' || item.confidence === 'low',
                 );
@@ -669,7 +692,7 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
                   <li
                     key={item.id}
                     id={`meal-review-row-${item.id}`}
-                    className={`meal-review-row meal-review-row--reveal ${isVerified ? 'meal-review-row--verified' : 'meal-review-row--pending'}${isUncertain ? ' meal-review-row--uncertain' : ''}`}
+                    className={`meal-review-row meal-review-row--reveal ${isVerified ? 'meal-review-row--verified' : 'meal-review-row--pending'}${isUncertain ? ' meal-review-row--uncertain' : ''}${toolsExpanded ? ' meal-review-row--expanded' : ''}`}
                     style={{ animationDelay: `${Math.min(index, 8) * 40}ms` }}
                   >
                     <div
@@ -746,11 +769,29 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
                                 Apply
                               </button>
                             </div>
-                            {item.portion_assumption && (
-                              <p className="meal-review-serving__assumption">{item.portion_assumption}</p>
-                            )}
-                            {item.source_note && (
-                              <p className="meal-review-row__source">{item.source_note}</p>
+                            {(item.portion_assumption || item.source_note || item.source_title) && (
+                              <div className="meal-review-serving__trust">
+                                {item.portion_assumption && (
+                                  <p className="meal-review-serving__assumption">{item.portion_assumption}</p>
+                                )}
+                                {(item.source_note || item.source_title) && (
+                                  item.source_url ? (
+                                    <a
+                                      href={item.source_url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="meal-review-row__source"
+                                      onClick={(event) => event.stopPropagation()}
+                                    >
+                                      {item.source_note || item.source_title}
+                                    </a>
+                                  ) : (
+                                    <p className="meal-review-row__source">
+                                      {item.source_note || item.source_title}
+                                    </p>
+                                  )
+                                )}
+                              </div>
                             )}
                           </div>
                         )}
@@ -856,90 +897,112 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
                       </div>
                     )}
 
-                    <div className="meal-review-row__actions">
-                      <div className="meal-review-stepper">
-                        <button
-                          type="button"
-                          onClick={() => adjustQuantity(item.id, -QUANTITY_STEP)}
-                          disabled={item.quantity <= QUANTITY_MIN}
-                          className="quantity-stepper quantity-stepper--compact"
-                          aria-label="Decrease portion"
-                        >
-                          −
-                        </button>
-                        <span className="meal-review-stepper__value tabular-nums">
-                          {item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(1)}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => adjustQuantity(item.id, QUANTITY_STEP)}
-                          className="quantity-stepper quantity-stepper--compact"
-                          aria-label="Increase portion"
-                        >
-                          +
-                        </button>
-                      </div>
-
-                      <div className="meal-review-row__tools">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingId(isEditing ? null : item.id);
-                            setServingEditId(null);
-                            setOpenMenuId(null);
-                          }}
-                          className="meal-review-tool-btn"
-                        >
-                          {isEditing ? 'Hide' : 'Adjust'}
-                        </button>
-
-                        <div className="meal-review-menu-wrap" ref={isMenuOpen ? menuRef : undefined}>
-                          <button
-                            type="button"
-                            className="meal-review-menu-trigger"
-                            onClick={() => setOpenMenuId(isMenuOpen ? null : item.id)}
-                            aria-label="More options"
-                            aria-expanded={isMenuOpen}
-                          >
-                            <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
-                              <circle cx="5" cy="12" r="2" />
-                              <circle cx="12" cy="12" r="2" />
-                              <circle cx="19" cy="12" r="2" />
+                    <div className="meal-review-row__primary-actions">
+                      <button
+                        type="button"
+                        onClick={() => toggleVerified(item.id)}
+                        className={`meal-review-verify ${isVerified ? 'meal-review-verify--done' : ''}`}
+                        aria-pressed={isVerified}
+                      >
+                        {isVerified ? (
+                          <>
+                            <svg className="meal-review-verify__icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                             </svg>
-                          </button>
-                          {isMenuOpen && (
-                            <div className="meal-review-menu" role="menu">
-                              <button
-                                type="button"
-                                role="menuitem"
-                                className="meal-review-menu__item meal-review-menu__item--danger"
-                                onClick={() => removeItem(item.id)}
-                              >
-                                Remove
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                            Verified
+                          </>
+                        ) : (
+                          'Looks good'
+                        )}
+                      </button>
+                      {!isVerified && (
+                        <button
+                          type="button"
+                          className="meal-review-more"
+                          aria-expanded={toolsExpanded}
+                          onClick={() => {
+                            setToolsExpandedId(toolsExpanded ? null : item.id);
+                            if (toolsExpanded) {
+                              setEditingId(null);
+                              setServingEditId(null);
+                              setOpenMenuId(null);
+                            }
+                          }}
+                        >
+                          {toolsExpanded ? 'Less' : 'More'}
+                        </button>
+                      )}
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => toggleVerified(item.id)}
-                      className={`meal-review-verify ${isVerified ? 'meal-review-verify--done' : ''}`}
-                      aria-pressed={isVerified}
-                    >
-                      {isVerified ? (
-                        <>
-                          <svg className="meal-review-verify__icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                          </svg>
-                          Verified
-                        </>
-                      ) : (
-                        'Looks good'
-                      )}
-                    </button>
+                    {toolsExpanded && !isVerified && (
+                      <div className="meal-review-row__actions">
+                        <div className="meal-review-stepper">
+                          <button
+                            type="button"
+                            onClick={() => adjustQuantity(item.id, -QUANTITY_STEP)}
+                            disabled={item.quantity <= QUANTITY_MIN}
+                            className="quantity-stepper quantity-stepper--compact"
+                            aria-label="Decrease portion"
+                          >
+                            −
+                          </button>
+                          <span className="meal-review-stepper__value tabular-nums">
+                            {item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(1)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => adjustQuantity(item.id, QUANTITY_STEP)}
+                            className="quantity-stepper quantity-stepper--compact"
+                            aria-label="Increase portion"
+                          >
+                            +
+                          </button>
+                        </div>
+
+                        <div className="meal-review-row__tools">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingId(isEditing ? null : item.id);
+                              setServingEditId(null);
+                              setOpenMenuId(null);
+                              setToolsExpandedId(item.id);
+                            }}
+                            className="meal-review-tool-btn"
+                          >
+                            {isEditing ? 'Hide' : 'Adjust'}
+                          </button>
+
+                          <div className="meal-review-menu-wrap" ref={isMenuOpen ? menuRef : undefined}>
+                            <button
+                              type="button"
+                              className="meal-review-menu-trigger"
+                              onClick={() => setOpenMenuId(isMenuOpen ? null : item.id)}
+                              aria-label="More options"
+                              aria-expanded={isMenuOpen}
+                            >
+                              <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+                                <circle cx="5" cy="12" r="2" />
+                                <circle cx="12" cy="12" r="2" />
+                                <circle cx="19" cy="12" r="2" />
+                              </svg>
+                            </button>
+                            {isMenuOpen && (
+                              <div className="meal-review-menu" role="menu">
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  className="meal-review-menu__item meal-review-menu__item--danger"
+                                  onClick={() => removeItem(item.id)}
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {isVerified && (
                       <label className="meal-review-remember">
@@ -964,9 +1027,7 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
           )}
 
           {error && (
-            <p className="mt-4 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-400">
-              {error}
-            </p>
+            <p className="alert-error mt-4">{error}</p>
           )}
           </div>
         )}
@@ -977,16 +1038,18 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
           <p className={`meal-review-retry__error${isRejection ? ' meal-review-retry__error--calm' : ''}`}>
             {parseError}
           </p>
-          {canEditRetryTranscript ? (
-            <label className="meal-review-retry__field">
-              <span className="meal-review-retry__label">Edit what you said and retry</span>
-              <textarea
-                value={retryDraft}
-                onChange={(e) => setRetryDraft(e.target.value)}
-                rows={3}
-                className="input-premium resize-none text-base w-full"
-              />
-            </label>
+          {canCorrectErrorTranscript ? (
+            <TranscriptCorrectBlock
+              transcript={errorTranscript}
+              label={getTranscriptCorrectLabel()}
+              canEdit
+              autoEdit={isRejection && parseRejectionReason === 'no_meal_detected'}
+              onCorrect={(text) => {
+                setRetryDraft(text);
+                onRetry?.(text);
+              }}
+              className="meal-review-retry__correct"
+            />
           ) : (
             !isRejection && (
               <p className="meal-review-retry__hint">Try the mic again or type your meal below.</p>

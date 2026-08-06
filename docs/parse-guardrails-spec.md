@@ -86,8 +86,8 @@ Changes (all in `transcriptValidation.ts`; keep the existing patterns, add these
 
 5. **`no_speech_prob` (staged).** `transcribeWithNanoGpt` in `parse-meal/index.ts` currently requests `response_format: 'json'`. Change to `verbose_json` and read `payload.segments[].no_speech_prob` if present (OpenAI-compatible Whisper serves it; if NanoGPT strips it, `segments` is simply absent and nothing changes).
 
-   - **Stage 1 (ship with this spec): log only.** `console.log('[stt] no_speech_prob', maxProb, 'len', text.length)` — build a threshold from real traffic.
-   - **Stage 2 (separate PR after ~1 week of logs): enforce.** Proposed starting rule: reject when *every* segment has `no_speech_prob > 0.85`, or mean > 0.6 **and** the transcript has no `MEAL_HINT` match. Do not enforce untuned thresholds blind — Whisper's calibration varies by provider.
+   - **Stage 1:** log `console.log('[stt] no_speech_prob', …)`.
+   - **Stage 2 (shipped):** enforce in `_shared/stt/noSpeech.ts` — reject when *every* segment has `no_speech_prob > 0.85`, or mean > 0.6 **and** the transcript has no `MEAL_HINT` match. Tune from private STT fixtures / production logs if false rejects appear.
 
 Rejections in this layer throw the typed `ParseRejectionError` (§C2) with reason `no_speech` (hallucination/filler) or `nothing_eaten`.
 

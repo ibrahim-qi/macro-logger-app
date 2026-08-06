@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "description": "Committed mock fixtures for offline STT contract scoring. Replace with private-fixtures/ for live bake-offs.",
+  "fixtures": [
+    {
+      "id": "eggs-150g",
+      "expectedTranscript": "two scrambled eggs about 150 grams",
+      "mockSttText": "two scrambled eggs about 150 grams",
+      "criticalTokens": {
+        "amounts": ["two", "150"],
+        "units": ["grams"],
+        "foods": ["eggs"],
+        "prep": ["scrambled"]
+      }
+    },
+    {
+      "id": "greggs-sausage-roll",
+      "expectedTranscript": "a Greggs sausage roll",
+      "mockSttText": "a Greggs sausage roll",
+      "criticalTokens": {
+        "brands": ["Greggs"],
+        "foods": ["sausage roll"]
+      }
+    },
+    {
+      "id": "negation-no-butter",
+      "expectedTranscript": "toast with no butter",
+      "mockSttText": "toast with no butter",
+      "criticalTokens": {
+        "foods": ["toast"],
+        "negation": ["no butter"]
+      }
+    },
+    {
+      "id": "amount-miss-example",
+      "expectedTranscript": "150 grams of rice",
+      "mockSttText": "50 grams of rice",
+      "notes": "Illustrates a nutrition-critical amount miss for scoring tests.",
+      "criticalTokens": {
+        "amounts": ["150"],
+        "units": ["grams"],
+        "foods": ["rice"]
+      }
+    }
+  ]
+}

@@ -15,8 +15,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ handleLogout }) => {
   const isStats = location.pathname === '/summary';
 
   return (
-    <div className="app-shell app-bg">
-      <header className="app-bar safe-x">
+    <div className={`app-shell app-bg ${isLog ? 'app-shell--log' : ''}`}>
+      <header className={`app-bar safe-x ${isLog ? 'app-bar--hidden' : ''}`}>
         <div className="app-container app-bar__inner app-bar__inner--centered">
           <div className="app-bar__side" aria-hidden="true" />
 
@@ -38,7 +38,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ handleLogout }) => {
       </header>
 
       <main className={`app-shell__main safe-x ${isLog ? 'app-shell__main--log' : ''}`}>
-        <div className="app-container animate-fade-in">
+        <div className={`app-container animate-fade-in ${isLog ? 'app-container--log' : ''}`}>
           <Outlet />
         </div>
       </main>

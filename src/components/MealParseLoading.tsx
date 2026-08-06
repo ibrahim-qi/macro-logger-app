@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  formatParseTranscriptPreview,
   getParseStageLabel,
   getParseStageSublabel,
   isLongParseTranscript,
@@ -8,6 +7,7 @@ import {
 import type { ParseProgressStage } from '../types/mealParse';
 import { useUserExperience } from '../context/userExperience';
 import { SahhaMark } from './SahhaBrand';
+import TranscriptCorrectBlock from './TranscriptCorrectBlock';
 
 const MIN_HOLD_MS = 700;
 const SUBLABEL_AFTER_MS = 8000;
@@ -23,6 +23,8 @@ interface MealParseLoadingProps {
   stage: ParseProgressStage | null;
   mode: 'voice' | 'text';
   exiting?: boolean;
+  /** When set, transcript becomes editable; submit aborts stale parse and restarts from text. */
+  onCorrectTranscript?: (text: string) => void;
 }
 
 const MealParseLoading: React.FC<MealParseLoadingProps> = ({
@@ -30,14 +32,14 @@ const MealParseLoading: React.FC<MealParseLoadingProps> = ({
   stage,
   mode,
   exiting = false,
+  onCorrectTranscript,
 }) => {
   const { experience } = useUserExperience();
   const trimmedTranscript = transcript?.trim() ?? '';
   const hasTranscript = Boolean(trimmedTranscript);
   const isLongTranscript = isLongParseTranscript(trimmedTranscript);
-  const previewTranscript = hasTranscript
-    ? formatParseTranscriptPreview(trimmedTranscript)
-    : '';
+  const canCorrect = Boolean(onCorrectTranscript) && hasTranscript && !exiting;
+  const [editing, setEditing] = useState(false);
 
   const [displayStage, setDisplayStage] = useState<ParseProgressStage | null>(null);
   const [showSublabel, setShowSublabel] = useState(false);
@@ -118,6 +120,15 @@ const MealParseLoading: React.FC<MealParseLoadingProps> = ({
       return;
     }
 
+    const prevIndex = STAGES.findIndex((item) => item.id === displayStageRef.current);
+    const nextIndex = STAGES.findIndex((item) => item.id === stage);
+    if (prevIndex >= 0 && nextIndex >= 0 && nextIndex < prevIndex) {
+      pendingStageRef.current = null;
+      clearHoldTimer();
+      commitDisplayStage(stage);
+      return;
+    }
+
     pendingStageRef.current = stage;
     tryAdvanceStage();
   }, [stage, mode, clearHoldTimer, commitDisplayStage, tryAdvanceStage]);
@@ -127,13 +138,22 @@ const MealParseLoading: React.FC<MealParseLoadingProps> = ({
     clearSublabelTimer();
   }, [clearHoldTimer, clearSublabelTimer]);
 
+  useEffect(() => {
+    if (!hasTranscript) setEditing(false);
+  }, [hasTranscript]);
+
   const labelStage = displayStage ?? stage;
   const label = getParseStageLabel(labelStage, mode, experience.firstName);
   const sublabel = showSublabel ? getParseStageSublabel(labelStage) : null;
+  // Step chips only before transcript arrives — label alone is enough afterward.
+  const showSteps = !hasTranscript && !editing;
   const visibleStages = mode === 'text' ? STAGES.slice(1) : STAGES;
+  const stageForSteps = labelStage && visibleStages.some((item) => item.id === labelStage)
+    ? labelStage
+    : visibleStages[0]?.id;
   const activeStageIndex = Math.max(
     0,
-    visibleStages.findIndex((item) => item.id === (labelStage ?? visibleStages[0].id)),
+    visibleStages.findIndex((item) => item.id === stageForSteps),
   );
 
   return (
@@ -142,6 +162,7 @@ const MealParseLoading: React.FC<MealParseLoadingProps> = ({
         'parse-wait',
         hasTranscript ? 'parse-wait--heard' : '',
         isLongTranscript ? 'parse-wait--long' : '',
+        editing ? 'parse-wait--editing' : '',
         exiting ? 'parse-wait--out' : '',
       ].filter(Boolean).join(' ')}
       aria-live="polite"
@@ -155,45 +176,45 @@ const MealParseLoading: React.FC<MealParseLoadingProps> = ({
         </div>
       )}
 
-      <p key={label} className="parse-wait__stage-label">{label}</p>
-      {sublabel && (
-        <p className="parse-wait__stage-sublabel">{sublabel}</p>
+      {hasTranscript && (
+        <TranscriptCorrectBlock
+          transcript={trimmedTranscript}
+          label="We heard"
+          canEdit={canCorrect}
+          className="parse-wait__transcript"
+          onEditingChange={setEditing}
+          onCorrect={onCorrectTranscript}
+        />
       )}
 
-      <ol className="parse-wait__steps" aria-label="Meal analysis progress">
-        {visibleStages.map((item, index) => (
-          <li
-            key={item.id}
-            className={`parse-wait__step ${index < activeStageIndex ? 'parse-wait__step--done' : ''} ${index === activeStageIndex ? 'parse-wait__step--active' : ''}`}
-            aria-current={index === activeStageIndex ? 'step' : undefined}
-          >
-            <span className="parse-wait__step-dot" aria-hidden="true">
-              {index < activeStageIndex ? '✓' : ''}
-            </span>
-            <span>{item.label}</span>
-          </li>
-        ))}
-      </ol>
+      {hasTranscript && !editing && (
+        <div className="parse-wait__shimmer" aria-hidden="true" />
+      )}
 
-      {hasTranscript && (
-        <div className="parse-wait__heard" aria-label={`We heard: ${trimmedTranscript}`}>
-          <span className="parse-wait__heard-label">
-            {isLongTranscript ? 'Detailed meal' : 'We heard'}
-          </span>
-          <p className="parse-wait__quote">
-            {isLongTranscript ? (
-              previewTranscript
-            ) : (
-              <>&ldquo;{previewTranscript}&rdquo;</>
-            )}
-          </p>
-          {isLongTranscript && (
-            <p className="parse-wait__heard-note">Full transcript on review</p>
+      {!editing && (
+        <>
+          <p key={label} className="parse-wait__stage-label">{label}</p>
+          {sublabel && (
+            <p className="parse-wait__stage-sublabel">{sublabel}</p>
           )}
-          {!isLongTranscript && (
-            <div className="parse-wait__shimmer" aria-hidden="true" />
+
+          {showSteps && (
+            <ol className="parse-wait__steps" aria-label="Meal analysis progress">
+              {visibleStages.map((item, index) => (
+                <li
+                  key={item.id}
+                  className={`parse-wait__step ${index < activeStageIndex ? 'parse-wait__step--done' : ''} ${index === activeStageIndex ? 'parse-wait__step--active' : ''}`}
+                  aria-current={index === activeStageIndex ? 'step' : undefined}
+                >
+                  <span className="parse-wait__step-dot" aria-hidden="true">
+                    {index < activeStageIndex ? '✓' : ''}
+                  </span>
+                  <span>{item.label}</span>
+                </li>
+              ))}
+            </ol>
           )}
-        </div>
+        </>
       )}
     </div>
   );

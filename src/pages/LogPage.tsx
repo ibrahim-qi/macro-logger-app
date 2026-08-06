@@ -64,6 +64,7 @@ const LogPage: React.FC<LogPageProps> = ({ session }) => {
 
   const handleTranscript = useCallback((transcript: string) => {
     setReviewTranscript(transcript);
+    hapticLight();
   }, []);
 
   const handleParseProgress = useCallback((stage: ParseProgressState['current']) => {
@@ -97,10 +98,14 @@ const LogPage: React.FC<LogPageProps> = ({ session }) => {
     const trimmed = text.trim();
     if (!trimmed) return;
 
+    // Abort any in-flight voice/text parse generation before restarting from text.
+    mealParseRef.current?.cancel();
     setReviewLoading(true);
     setParseError(null);
     setParseResult(null);
     setReviewTranscript(trimmed);
+    // Correction/retry always restarts from text and skips STT.
+    setParseMode('text');
     setParseProgress({ current: 'identifying' });
     retryAbortRef.current?.abort();
     const controller = new AbortController();
@@ -129,6 +134,10 @@ const LogPage: React.FC<LogPageProps> = ({ session }) => {
       if (!controller.signal.aborted) setReviewLoading(false);
     }
   }, []);
+
+  const handleCorrectTranscript = useCallback((text: string) => {
+    void handleParseRetry(text);
+  }, [handleParseRetry]);
 
   const handleVoiceRetry = useCallback(() => {
     resetReview();
@@ -160,37 +169,31 @@ const LogPage: React.FC<LogPageProps> = ({ session }) => {
 
   return (
     <div className="log-page">
-      <LogHero selectedDate={logDate} onDateChange={setLogDate} />
+      <div className="log-page__stage">
+        <LogHero selectedDate={logDate} onDateChange={setLogDate} />
 
-      <MealParseInput
-        ref={mealParseRef}
-        reviewActive={reviewOpen}
-        onParseStart={handleParseStart}
-        onTranscript={handleTranscript}
-        onParseProgress={handleParseProgress}
-        onParsed={handleParsed}
-        onParseError={handleParseError}
-      />
+        <MealParseInput
+          ref={mealParseRef}
+          reviewActive={reviewOpen}
+          onParseStart={handleParseStart}
+          onTranscript={handleTranscript}
+          onParseProgress={handleParseProgress}
+          onParsed={handleParsed}
+          onParseError={handleParseError}
+        />
+      </div>
 
-      <section className="log-secondary" aria-label="Quick add">
+      <section className={`log-secondary ${showSaved ? 'log-secondary--open' : ''}`} aria-label="Quick add">
         <button
           type="button"
           onClick={() => setShowSaved((v) => !v)}
-          className="log-secondary__trigger"
+          className="log-secondary__link"
+          aria-expanded={showSaved}
         >
-          <div>
-            <p className="section-label">Quick add</p>
-            <p className="log-secondary__title">Saved foods</p>
-          </div>
-          <svg
-            className={`w-5 h-5 text-[var(--color-text-muted)] transition-transform ${showSaved ? 'rotate-180' : ''}`}
-            fill="none" stroke="currentColor" viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
+          {showSaved ? 'Hide saved foods' : 'Saved foods'}
         </button>
         {showSaved && (
-          <div className="px-5 pb-5 border-t border-[var(--color-border-soft)]">
+          <div className="log-secondary__panel">
             <SavedFoodManager session={session} onFoodSelect={handleSavedFoodSelect} />
           </div>
         )}
@@ -213,6 +216,7 @@ const LogPage: React.FC<LogPageProps> = ({ session }) => {
         onLogged={handleLogged}
         onRetry={handleParseRetry}
         onRetryVoice={handleVoiceRetry}
+        onCorrectTranscript={handleCorrectTranscript}
       />
     </div>
   );

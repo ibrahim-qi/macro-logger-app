@@ -13,6 +13,13 @@ dist-ssr
 benchmark-results
 *.local
 
+# Private STT corpus — never commit owner recordings or filled manifests
+scripts/transcription-benchmark/private-fixtures/*
+!scripts/transcription-benchmark/private-fixtures/.gitkeep
+!scripts/transcription-benchmark/private-fixtures/manifest.example.json
+scripts/transcription-benchmark/_speed-probe.wav
+stt-models-tmp.json
+
 # Environment variables
 .env*
 !.env.example

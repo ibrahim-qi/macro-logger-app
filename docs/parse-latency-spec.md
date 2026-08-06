@@ -13,6 +13,27 @@ With `PARSE_TIMING=1`, `ParseTimings` reports:
 - `total_ms`
 - `path`
 
+Voice requests also emit structured STT timings (no raw audio/transcript PII):
+
+- `stt_ms`
+- `stt_attempts`
+- `stt_bytes`
+- `stt_provider`
+- `stt_model`
+
+These are logged as `[stt] timing` and included on streamed `transcript` / `result` timing objects when available.
+
+### Done → transcript path (voice)
+
+Wall-clock from mic Done to the streamed `transcript` event is dominated by the STT provider call. Controls that shrink that window:
+
+1. Default STT model `gpt-4o-mini-transcribe` (override via `NANOGPT_STT_MODEL`).
+2. Stream opens and emits `progress:transcribing` before waiting on `saved_foods`; STT waits at most ~150 ms for that prompt context.
+3. Client overlaps session-token prefetch with MediaRecorder stop.
+4. Non-Whisper models use `response_format=json` (skip verbose segment payload).
+
+In local DEV, the client logs `[voice] done_to_transcript_ms`.
+
 The old draft/refine timing fields and model-split experiment no longer exist.
 
 ## Current controls

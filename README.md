@@ -141,7 +141,7 @@ In **Supabase Dashboard → Project Settings → Edge Functions → Secrets** (p
 | Secret | Value | Required |
 |---|---|---|
 | `NANOGPT_API_KEY` | Your NanoGPT API key | Yes |
-| `NANOGPT_STT_MODEL` | `Whisper-Large-V3` | Optional (default) |
+| `NANOGPT_STT_MODEL` | `gpt-4o-mini-transcribe` | Optional (default; set `Whisper-Large-V3` to revert) |
 | `NANOGPT_PARSE_MODEL` | `google/gemini-3.6-flash` | Main interpretation and fallback model |
 | `NANOGPT_INTERPRETATION_MODEL` | Optional model override | Optional |
 | `NANOGPT_EXTRACTION_MODEL` | `google/gemini-3.5-flash-lite` | Fast structured evidence extraction |
@@ -156,7 +156,7 @@ Or via CLI (after linking the project):
 
 ```bash
 supabase secrets set NANOGPT_API_KEY=your_nanogpt_api_key
-supabase secrets set NANOGPT_STT_MODEL=Whisper-Large-V3
+supabase secrets set NANOGPT_STT_MODEL=gpt-4o-mini-transcribe
 supabase secrets set NANOGPT_PARSE_MODEL=google/gemini-3.6-flash
 supabase secrets set NANOGPT_EXTRACTION_MODEL=google/gemini-3.5-flash-lite
 supabase secrets set SERPER_API_KEY=your_serper_api_key

@@ -7,16 +7,16 @@ import MainLayout from './layouts/MainLayout';
 import LogPage from './pages/LogPage';
 import FoodEntryList from './components/FoodEntryList';
 import SummaryDisplay from './components/SummaryDisplay';
-import SahhaBrand from './components/SahhaBrand';
+import SahhaBrand, { SahhaMark } from './components/SahhaBrand';
 import AuthScreen from './components/AuthScreen';
 import LoadingState from './components/LoadingState';
-import NameSetupModal from './components/NameSetupModal';
-import GoalsOnboardingModal from './components/GoalsOnboardingModal';
-import MicIntroModal from './components/MicIntroModal';
+import OnboardingWizard from './components/OnboardingWizard';
 import { SAHHA_TAGLINE, getBootLoadingLabel, getBootLoadingSublabel } from './copy/experience';
 import { UserExperienceProvider } from './context/UserExperienceContext';
 import { useUserExperience } from './context/userExperience';
 import { ToastProvider } from './context/ToastContext';
+
+const AUTH_BEATS = ['Speak naturally', 'Review with confidence', 'Logged in seconds'] as const;
 
 function AuthenticatedApp({
   session,
@@ -45,10 +45,39 @@ function AuthenticatedApp({
           <Route path="*" element={<Navigate to="." replace />} />
         </Route>
       </Routes>
-      <NameSetupModal isOpen={needsName} onSave={setDisplayName} />
-      <GoalsOnboardingModal session={session} isOpen={needsGoals} onComplete={refresh} />
-      <MicIntroModal isOpen={needsMicIntro} onComplete={completeMicIntro} />
+      <OnboardingWizard
+        session={session}
+        needsName={needsName}
+        needsGoals={needsGoals}
+        needsMicIntro={needsMicIntro}
+        onSaveName={setDisplayName}
+        onGoalsComplete={refresh}
+        onMicComplete={completeMicIntro}
+      />
     </>
+  );
+}
+
+function AuthPreview() {
+  const [beatIndex, setBeatIndex] = useState(0);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setBeatIndex((index) => (index + 1) % AUTH_BEATS.length);
+    }, 2200);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return (
+    <div className="auth-preview" aria-hidden="true">
+      <div className="auth-preview__orb">
+        <span className="auth-preview__ring" />
+        <SahhaMark className="brand-mark--hero-lg auth-preview__mark" glow />
+      </div>
+      <p key={AUTH_BEATS[beatIndex]} className="auth-preview__beat">
+        {AUTH_BEATS[beatIndex]}
+      </p>
+    </div>
   );
 }
 
@@ -75,6 +104,7 @@ function AppShell({
     return (
       <div className="app-scroll-view flex items-center justify-center w-full auth-bg safe-top safe-bottom safe-x">
         <div className="app-container auth-page animate-fade-in">
+          <AuthPreview />
           <SahhaBrand size="lg" variant="hero" showTagline tagline={SAHHA_TAGLINE} />
           <AuthScreen />
         </div>

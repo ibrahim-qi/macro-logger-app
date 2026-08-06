@@ -1,6 +1,6 @@
 import React from 'react';
 import DatePicker from './DatePicker';
-import { getLogHelper, getLogTitle } from '../copy/experience';
+import { getLogTitle } from '../copy/experience';
 import { useUserExperience } from '../context/userExperience';
 
 interface LogHeroProps {
@@ -13,8 +13,6 @@ const LogHero: React.FC<LogHeroProps> = ({ selectedDate, onDateChange }) => {
 
   return (
     <header className="log-hero">
-      <div className="log-hero__canopy" aria-hidden="true" />
-
       <div className="log-hero__date">
         <DatePicker
           selectedDate={selectedDate}
@@ -26,7 +24,6 @@ const LogHero: React.FC<LogHeroProps> = ({ selectedDate, onDateChange }) => {
       </div>
 
       <h1 className="log-hero__prompt">{getLogTitle(experience)}</h1>
-      <p className="log-hero__helper">{getLogHelper()}</p>
     </header>
   );
 };

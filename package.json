@@ -15,7 +15,12 @@
     "test:saved-foods": "tsx scripts/macro-benchmark/applySavedFoods.test.ts",
     "test:nutrition": "tsx scripts/macro-benchmark/nutritionCompute.test.ts",
     "test:web-search": "tsx scripts/macro-benchmark/webSearch.test.ts",
-    "test:parsing": "npm run test:normalize && npm run test:saved-foods && npm run test:nutrition && npm run test:web-search && npm run guardrails:unit",
+    "test:portion-sanity": "tsx scripts/macro-benchmark/interpretationPortionSanity.test.ts",
+    "test:stt": "tsx scripts/transcription-benchmark/score.test.ts",
+    "benchmark:stt": "tsx scripts/transcription-benchmark/run.ts",
+    "benchmark:stt:live": "tsx scripts/transcription-benchmark/run.ts --live",
+    "benchmark:stt:compare": "tsx scripts/transcription-benchmark/compare.ts",
+    "test:parsing": "npm run test:normalize && npm run test:saved-foods && npm run test:nutrition && npm run test:web-search && npm run test:portion-sanity && npm run test:stt && npm run guardrails:unit",
     "guardrails:unit": "tsx scripts/guardrails/unit.test.ts",
     "guardrails:intent": "tsx scripts/guardrails/intent.test.ts"
   },

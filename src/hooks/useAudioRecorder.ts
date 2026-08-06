@@ -1,13 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  MAX_AUDIO_BYTES,
+  MAX_RECORDING_MS,
+} from '../../supabase/functions/_shared/stt/constants.ts';
 
 export type RecordingStatus = 'idle' | 'recording' | 'unsupported';
 
-interface RecordingResult {
-  base64: string;
+export interface RecordingResult {
+  blob: Blob;
   mimeType: string;
   durationMs: number;
   peakLevel: number;
   voicedMs: number;
+  byteLength: number;
+  /** True when the recorder stopped because of the hard duration cap. */
+  stoppedByMaxDuration?: boolean;
 }
 
 function pickMimeType(): string {
@@ -32,28 +39,14 @@ function normalizeMimeType(mimeType: string): string {
   return base;
 }
 
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const result = reader.result;
-      if (typeof result !== 'string') {
-        reject(new Error('Failed to read audio'));
-        return;
-      }
-      const base64 = result.split(',')[1];
-      if (!base64) {
-        reject(new Error('Failed to encode audio'));
-        return;
-      }
-      resolve(base64);
-    };
-    reader.onerror = () => reject(new Error('Failed to read audio'));
-    reader.readAsDataURL(blob);
-  });
-}
+export function useAudioRecorder(options?: {
+  maxDurationMs?: number;
+  onMaxDurationReached?: () => void;
+}) {
+  const maxDurationMs = options?.maxDurationMs ?? MAX_RECORDING_MS;
+  const onMaxDurationReachedRef = useRef(options?.onMaxDurationReached);
+  onMaxDurationReachedRef.current = options?.onMaxDurationReached;
 
-export function useAudioRecorder() {
   const [status, setStatus] = useState<RecordingStatus>(() => {
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
       return 'unsupported';
@@ -76,7 +69,16 @@ export function useAudioRecorder() {
   const voicedMsRef = useRef(0);
   const lastTickAtRef = useRef(0);
   const recordingStartedAtRef = useRef(0);
+  const maxDurationTimerRef = useRef<number | null>(null);
+  const stoppedByMaxDurationRef = useRef(false);
   const [audioLevel, setAudioLevel] = useState(0);
+
+  const clearMaxDurationTimer = useCallback(() => {
+    if (maxDurationTimerRef.current !== null) {
+      window.clearTimeout(maxDurationTimerRef.current);
+      maxDurationTimerRef.current = null;
+    }
+  }, []);
 
   const stopLevelMonitor = useCallback(() => {
     if (levelRafRef.current !== null) {
@@ -96,12 +98,13 @@ export function useAudioRecorder() {
   }, []);
 
   const cleanupStream = useCallback(() => {
+    clearMaxDurationTimer();
     stopLevelMonitor();
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     mediaRecorderRef.current = null;
     chunksRef.current = [];
-  }, [stopLevelMonitor]);
+  }, [clearMaxDurationTimer, stopLevelMonitor]);
 
   const startLevelMonitor = useCallback((stream: MediaStream) => {
     stopLevelMonitor();
@@ -152,6 +155,7 @@ export function useAudioRecorder() {
     }
 
     startingRef.current = true;
+    stoppedByMaxDurationRef.current = false;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -185,6 +189,14 @@ export function useAudioRecorder() {
       startLevelMonitor(stream);
       recorder.start(250);
       setStatus('recording');
+
+      clearMaxDurationTimer();
+      maxDurationTimerRef.current = window.setTimeout(() => {
+        if (mediaRecorderRef.current?.state === 'recording') {
+          stoppedByMaxDurationRef.current = true;
+          onMaxDurationReachedRef.current?.();
+        }
+      }, maxDurationMs);
     } catch (error) {
       cleanupStream();
       setStatus('idle');
@@ -192,7 +204,7 @@ export function useAudioRecorder() {
     } finally {
       startingRef.current = false;
     }
-  }, [cleanupStream, startLevelMonitor, status]);
+  }, [cleanupStream, clearMaxDurationTimer, maxDurationMs, startLevelMonitor, status]);
 
   const stopRecording = useCallback(async (): Promise<RecordingResult> => {
     const recorder = mediaRecorderRef.current;
@@ -202,8 +214,11 @@ export function useAudioRecorder() {
       throw new Error('No active recording');
     }
 
+    clearMaxDurationTimer();
+    const stoppedByMaxDuration = stoppedByMaxDurationRef.current;
+
     return new Promise((resolve, reject) => {
-      recorder.onstop = async () => {
+      recorder.onstop = () => {
         try {
           const chunkType = chunksRef.current.find((chunk) => chunk.type)?.type;
           const mimeType = normalizeMimeType(
@@ -213,13 +228,24 @@ export function useAudioRecorder() {
           if (blob.size === 0) {
             throw new Error('Recording was empty. Try again.');
           }
-          const base64 = await blobToBase64(blob);
+          if (blob.size > MAX_AUDIO_BYTES) {
+            throw new Error('Recording is too large. Keep it under 30 seconds and try again.');
+          }
           const durationMs = Math.max(0, Date.now() - recordingStartedAtRef.current);
           const peakLevel = peakLevelRef.current;
           const voicedMs = voicedMsRef.current;
+          const byteLength = blob.size;
           cleanupStream();
           setStatus('idle');
-          resolve({ base64, mimeType, durationMs, peakLevel, voicedMs });
+          resolve({
+            blob,
+            mimeType,
+            durationMs,
+            peakLevel,
+            voicedMs,
+            byteLength,
+            stoppedByMaxDuration,
+          });
         } catch (error) {
           cleanupStream();
           setStatus('idle');
@@ -238,7 +264,7 @@ export function useAudioRecorder() {
       }
       recorder.stop();
     });
-  }, [cleanupStream]);
+  }, [cleanupStream, clearMaxDurationTimer]);
 
   const cancelRecording = useCallback(() => {
     const recorder = mediaRecorderRef.current;
@@ -247,20 +273,23 @@ export function useAudioRecorder() {
       recorder.stop();
     }
     startingRef.current = false;
+    stoppedByMaxDurationRef.current = false;
     cleanupStream();
     setStatus('idle');
   }, [cleanupStream]);
 
   useEffect(() => () => {
+    clearMaxDurationTimer();
     stopLevelMonitor();
     streamRef.current?.getTracks().forEach((track) => track.stop());
-  }, [stopLevelMonitor]);
+  }, [clearMaxDurationTimer, stopLevelMonitor]);
 
   return {
     status,
     isRecording: status === 'recording',
     isSupported: status !== 'unsupported',
     audioLevel,
+    maxDurationMs,
     startRecording,
     stopRecording,
     cancelRecording,

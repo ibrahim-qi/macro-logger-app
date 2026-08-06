@@ -146,31 +146,16 @@ async function readNdjsonStream(
   }
 }
 
-/** Voice or text parse over one connection — streams progress before macros finish. */
-async function invokeParseMealStream(
-  body: Record<string, unknown>,
-  callbacks?: {
-    onTranscript?: (transcript: string) => void;
-    onProgress?: (stage: ParseProgressStage) => void;
-    signal?: AbortSignal;
-  },
-): Promise<ParseMealResponse> {
-  const accessToken = await getFreshAccessToken();
-  const response = await fetch(`${supabaseUrl}/functions/v1/parse-meal`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      apikey: supabaseAnonKey,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      action: 'parse',
-      stream: true,
-      ...body,
-    }),
-    signal: callbacks?.signal,
-  });
+type StreamCallbacks = {
+  onTranscript?: (transcript: string) => void;
+  onProgress?: (stage: ParseProgressStage) => void;
+  signal?: AbortSignal;
+};
 
+async function consumeParseStream(
+  response: Response,
+  callbacks?: StreamCallbacks,
+): Promise<ParseMealResponse> {
   if (!response.ok) {
     try {
       const payload = await response.json() as {
@@ -243,6 +228,60 @@ async function invokeParseMealStream(
   return parsedMeal;
 }
 
+/** Voice or text parse over one connection — streams progress before macros finish. */
+async function invokeParseMealStream(
+  body: Record<string, unknown>,
+  callbacks?: StreamCallbacks,
+): Promise<ParseMealResponse> {
+  const accessToken = await getFreshAccessToken();
+  const response = await fetch(`${supabaseUrl}/functions/v1/parse-meal`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      apikey: supabaseAnonKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      action: 'parse',
+      stream: true,
+      ...body,
+    }),
+    signal: callbacks?.signal,
+  });
+
+  return consumeParseStream(response, callbacks);
+}
+
+interface VoiceStreamCallbacks extends StreamCallbacks {
+  /** Prefetched session token — overlap with MediaRecorder stop when provided. */
+  accessToken?: string;
+}
+
+/** Authenticated multipart voice upload — avoids base64-in-JSON overhead. */
+async function invokeParseMealVoiceMultipart(
+  body: { audio: Blob; mimeType: string },
+  callbacks?: VoiceStreamCallbacks,
+): Promise<ParseMealResponse> {
+  const accessToken = callbacks?.accessToken ?? await getFreshAccessToken();
+  const form = new FormData();
+  form.append('action', 'parse');
+  form.append('stream', 'true');
+  form.append('mimeType', body.mimeType);
+  form.append('audio', body.audio, `recording.${body.mimeType.includes('mp4') ? 'm4a' : 'webm'}`);
+
+  const response = await fetch(`${supabaseUrl}/functions/v1/parse-meal`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      apikey: supabaseAnonKey,
+    },
+    body: form,
+    signal: callbacks?.signal,
+  });
+
+  return consumeParseStream(response, callbacks);
+}
+
 async function invokeParseMealPlain(body: Record<string, unknown>): Promise<ParseMealResponse> {
   const data = await invokeMealFunction<ParseMealResponse>(body);
 
@@ -306,19 +345,25 @@ async function getFreshAccessToken(): Promise<string> {
   return refreshed.access_token;
 }
 
+/** Warm/refresh the auth token so Done→upload does not serialize on session I/O. */
+export async function prefetchParseAccessToken(): Promise<string> {
+  return getFreshAccessToken();
+}
+
 /** Voice parse over one connection — streams transcript before macros finish. */
 export async function invokeParseMealVoice(
-  body: { audio: string; mimeType: string },
+  body: { audio: Blob; mimeType: string },
   callbacks?: {
     onTranscript?: (transcript: string) => void;
     onProgress?: (stage: ParseProgressStage) => void;
     signal?: AbortSignal;
+    accessToken?: string;
   },
 ): Promise<ParseMealResponse> {
-  return invokeParseMealStream(
+  return invokeParseMealVoiceMultipart(
     {
       audio: body.audio,
-      mimeType: body.mimeType ?? 'audio/webm',
+      mimeType: body.mimeType || 'audio/webm',
     },
     callbacks,
   );

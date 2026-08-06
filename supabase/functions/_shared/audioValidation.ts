@@ -1,4 +1,7 @@
+import { MAX_AUDIO_BYTES } from './stt/constants.ts';
+
 export const MIN_AUDIO_BYTES = 2048;
+export { MAX_AUDIO_BYTES };
 
 /** Strip codec params — APIs expect `audio/webm`, not `audio/webm;codecs=opus`. */
 export function normalizeAudioMimeType(mimeType: string): string {
@@ -20,6 +23,9 @@ export function extensionForMime(mimeType: string): string {
 export function assertValidAudioPayload(byteLength: number): void {
   if (byteLength < MIN_AUDIO_BYTES) {
     throw new Error('Recording was too short or empty. Hold the mic and speak for at least 2 seconds.');
+  }
+  if (byteLength > MAX_AUDIO_BYTES) {
+    throw new Error('Recording is too large. Keep it under 30 seconds and try again.');
   }
 }
 

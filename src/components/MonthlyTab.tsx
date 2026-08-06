@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import MacroStatGrid from './MacroStatGrid';
 import LoadingState from './LoadingState';
+import { SahhaMark } from './SahhaBrand';
 import { getStatsEmptyBody, getStatsEmptyCta, getStatsEmptyTitle, getTabLoadingLabel } from '../copy/experience';
 
 interface SummaryData {
@@ -22,12 +23,6 @@ interface MonthlyTabProps {
   isCurrentMonth: () => boolean;
   changeMonth: (offset: number) => void;
 }
-
-const EmptyChartIcon = () => (
-  <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-  </svg>
-);
 
 const MonthlyTab: React.FC<MonthlyTabProps> = ({
   data,
@@ -70,7 +65,9 @@ const MonthlyTab: React.FC<MonthlyTabProps> = ({
           />
         ) : !data || data.entry_count === 0 ? (
           <div className="stats-empty">
-            <div className="stats-empty__icon"><EmptyChartIcon /></div>
+            <div className="stats-empty__icon">
+              <SahhaMark className="brand-mark--header-lg" />
+            </div>
             <h3 className="stats-empty__title">{getStatsEmptyTitle()}</h3>
             <p className="stats-empty__body">{getStatsEmptyBody()}</p>
             <Link to="/log" className="btn-primary max-w-[14rem] mx-auto mt-4">
@@ -79,6 +76,18 @@ const MonthlyTab: React.FC<MonthlyTabProps> = ({
           </div>
         ) : (
           <div>
+            {data.days_logged > 0 && (
+              <div className="stats-hero">
+                <p className="stats-hero-num tabular-nums">
+                  {Math.round(data.total_calories / data.days_logged)}
+                </p>
+                <p className="stats-hero-label">avg cal / day</p>
+                <p className="stats-hero-meta">
+                  {data.days_logged} {data.days_logged === 1 ? 'day' : 'days'} logged · {Math.round(data.total_calories)} total
+                </p>
+              </div>
+            )}
+
             <MacroStatGrid
               size="lg"
               showTrend
@@ -99,11 +108,8 @@ const MonthlyTab: React.FC<MonthlyTabProps> = ({
             {data.days_logged > 0 && (
               <div className="stats-divider mt-6">
                 <div className="text-center mb-4">
-                  <div className="stats-avg-value text-macro-calories">
-                    {(data.total_calories / data.days_logged).toFixed(0)} cal/day
-                  </div>
                   <div className="stats-avg-label">
-                    Average across {data.days_logged} {data.days_logged === 1 ? 'day' : 'days'}
+                    Daily averages
                   </div>
                 </div>
 

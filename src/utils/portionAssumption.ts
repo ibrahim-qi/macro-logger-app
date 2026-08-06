@@ -124,8 +124,8 @@ function cleanServingPhrase(phrase: string): string {
   return phrase
     .replace(/\s+/g, ' ')
     .replace(/\s*\([^)]*\)/g, ' ')
-    .replace(/[\])]+$/g, '')
-    .replace(/^[\[(]+/g, '')
+    .replace(/[)\]]+$/g, '')
+    .replace(/^[[(]+/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }

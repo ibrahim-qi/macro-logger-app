@@ -12,10 +12,16 @@ import { SahhaMark } from './SahhaBrand';
 import type { ParseMealResponse, ParseProgressStage } from '../types/mealParse';
 import {
   getVoiceLongRecordingHint,
+  getVoiceMaxDurationHint,
   getVoiceProcessingHint,
   getTextParsingCtaLabel,
 } from '../copy/experience';
-import { invokeParseMeal, invokeParseMealVoice, toParseErrorPayload } from '../utils/parseMeal';
+import {
+  invokeParseMeal,
+  invokeParseMealVoice,
+  prefetchParseAccessToken,
+  toParseErrorPayload,
+} from '../utils/parseMeal';
 import type { ParseErrorPayload } from '../utils/parseRejection.ts';
 import {
   assertRecordingHasSpeech,
@@ -23,6 +29,7 @@ import {
   normalizeAudioMimeType,
 } from '../utils/transcriptValidation';
 import { hapticLight, hapticMedium } from '../utils/haptics';
+import { MAX_RECORDING_MS } from '../../supabase/functions/_shared/stt/constants.ts';
 
 export interface MealParseInputHandle {
   cancel: () => void;
@@ -70,14 +77,21 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
   const finishingRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const micButtonRef = useRef<HTMLButtonElement>(null);
+  const finishRecordingRef = useRef<() => Promise<void>>(async () => {});
   const {
     isRecording,
     isSupported,
     audioLevel,
+    maxDurationMs,
     startRecording,
     stopRecording,
     cancelRecording,
-  } = useAudioRecorder();
+  } = useAudioRecorder({
+    maxDurationMs: MAX_RECORDING_MS,
+    onMaxDurationReached: () => {
+      void finishRecordingRef.current();
+    },
+  });
 
   const startNewParseGeneration = () => {
     abortControllerRef.current?.abort();
@@ -188,6 +202,8 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
 
     try {
       hapticMedium();
+      // Warm auth while the user speaks so Done does not wait on session I/O.
+      void prefetchParseAccessToken().catch(() => undefined);
       await startRecording();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Microphone access denied.');
@@ -200,26 +216,40 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
     finishingRef.current = true;
     const { generation, signal } = startNewParseGeneration();
     hapticLight();
+    const doneAt = performance.now();
 
     setLoading(true);
     onParseStart?.({ mode: 'voice' });
 
     try {
-      const { base64, mimeType, durationMs, peakLevel, voicedMs } = await stopRecording();
+      // Overlap MediaRecorder finalize with token fetch.
+      const tokenPromise = prefetchParseAccessToken();
+      const {
+        blob,
+        mimeType,
+        durationMs,
+        peakLevel,
+        voicedMs,
+        byteLength,
+      } = await stopRecording();
       if (!isCurrentParse(generation)) return;
 
-      const audioBytes = Math.floor((base64.length * 3) / 4);
-      assertRecordingHasSpeech(durationMs, peakLevel, audioBytes, voicedMs);
+      assertRecordingHasSpeech(durationMs, peakLevel, byteLength, voicedMs);
 
+      const accessToken = await tokenPromise;
       const data = await invokeParseMealVoice(
         {
-          audio: base64,
+          audio: blob,
           mimeType: normalizeAudioMimeType(mimeType),
         },
         {
+          accessToken,
           onTranscript: (transcript) => {
             if (!isCurrentParse(generation)) return;
-            setText(transcript);
+            if (import.meta.env.DEV) {
+              console.log('[voice] done_to_transcript_ms', Math.round(performance.now() - doneAt));
+            }
+            // Sheet owns the voice transcript — don't leave it in the type field.
             onTranscript?.(transcript);
           },
           onProgress: (stage) => {
@@ -248,6 +278,8 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
     }
   };
 
+  finishRecordingRef.current = finishRecording;
+
   const handleCancelRecording = () => {
     cancelRecording();
     finishingRef.current = false;
@@ -259,7 +291,18 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
 
   const isProcessing = loading && !isRecording && !reviewActive;
   const micDisabled = reviewActive || (loading && !isRecording) || !isSupported;
-  const voiceStyle = { '--voice-level': isRecording ? audioLevel : 0 } as CSSProperties;
+  const maxDurationSec = Math.floor(maxDurationMs / 1000);
+  const countdownWindowSec = 5;
+  const countdownActive = isRecording && recordingSeconds >= maxDurationSec - countdownWindowSec;
+  const countdownProgress = countdownActive
+    ? Math.min(1, (recordingSeconds - (maxDurationSec - countdownWindowSec)) / countdownWindowSec)
+    : isRecording
+      ? Math.min(0.92, recordingSeconds / maxDurationSec)
+      : 0;
+  const voiceStyle = {
+    '--voice-level': isRecording ? audioLevel : 0,
+    '--countdown-progress': countdownProgress,
+  } as CSSProperties;
 
   let voiceHint: VoiceHint = 'idle';
   if (isRecording) voiceHint = 'listening';
@@ -288,9 +331,16 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
             isRecording ? 'sahha-voice__orb--live' : '',
             isProcessing ? 'sahha-voice__orb--busy' : '',
             isPressing ? 'sahha-voice__orb--press' : '',
+            countdownActive ? 'sahha-voice__orb--countdown' : '',
           ].filter(Boolean).join(' ')}
         >
           <span className="sahha-voice__surface" aria-hidden="true" />
+          {isRecording && (
+            <span
+              className={`sahha-voice__countdown ${countdownActive ? 'sahha-voice__countdown--urgent' : ''}`}
+              aria-hidden="true"
+            />
+          )}
           <span className="sahha-voice__ring" aria-hidden="true" />
           <span className="sahha-voice__halo" aria-hidden="true" />
           <span key={rippleKey} className="sahha-voice__ripple" aria-hidden="true" />
@@ -316,9 +366,11 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
           {isSupported && !reviewActive && (
             <p key={voiceHint} className="sahha-voice__hint">
               {voiceHint === 'listening' && (
-                recordingSeconds >= 60
-                  ? getVoiceLongRecordingHint()
-                  : 'Listening…'
+                countdownActive
+                  ? getVoiceMaxDurationHint(Math.max(0, maxDurationSec - recordingSeconds))
+                  : recordingSeconds >= 20
+                    ? getVoiceLongRecordingHint()
+                    : 'Listening…'
               )}
               {voiceHint === 'analysing' && getVoiceProcessingHint()}
               {voiceHint === 'idle' && 'Tap to speak'}

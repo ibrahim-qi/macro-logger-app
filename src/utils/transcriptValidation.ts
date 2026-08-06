@@ -1,5 +1,6 @@
 import { getNoSpeechMessage } from '../copy/experience';
 import { evaluateTranscriptGate } from '../../supabase/functions/_shared/transcriptValidation.ts';
+import { MAX_AUDIO_BYTES } from '../../supabase/functions/_shared/stt/constants.ts';
 import { ParseRejectionError } from './parseRejection.ts';
 
 const MIN_RECORDING_MS = 1000;
@@ -30,6 +31,9 @@ export function assertRecordingHasSpeech(
   }
   if (byteLength !== undefined && byteLength < MIN_AUDIO_BYTES) {
     throw new Error('Recording was too short. Hold the mic and say what you ate.');
+  }
+  if (byteLength !== undefined && byteLength > MAX_AUDIO_BYTES) {
+    throw new Error('Recording is too large. Keep it under 30 seconds and try again.');
   }
 }
 

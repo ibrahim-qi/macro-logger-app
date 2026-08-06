@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "description": "Copy to manifest.json and add owner-recorded iPhone clips. Do not commit audio or filled manifests with private speech.",
+  "fixtures": [
+    {
+      "id": "iphone-eggs-150g",
+      "audio": "iphone-eggs-150g.m4a",
+      "mimeType": "audio/mp4",
+      "expectedTranscript": "two scrambled eggs about 150 grams",
+      "criticalTokens": {
+        "amounts": ["two", "150"],
+        "units": ["grams", "g"],
+        "foods": ["eggs"],
+        "prep": ["scrambled"]
+      },
+      "mockSttText": "two scrambled eggs about 150 grams"
+    }
+  ]
+}
