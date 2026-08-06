@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Outlet, NavLink, useLocation, Link } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
 import { SahhaWordmark } from '../components/SahhaBrand';
@@ -10,9 +10,16 @@ interface MainLayoutProps {
 
 const MainLayout: React.FC<MainLayoutProps> = ({ handleLogout }) => {
   const location = useLocation();
+  const mainRef = useRef<HTMLElement>(null);
   const isLog = location.pathname === '/log';
   const isToday = location.pathname === '/';
   const isStats = location.pathname === '/summary';
+
+  // Keep dock navigations at the top of the page (shared scroll container).
+  useEffect(() => {
+    const main = mainRef.current;
+    if (main) main.scrollTop = 0;
+  }, [location.pathname]);
 
   return (
     <div className={`app-shell app-bg ${isLog ? 'app-shell--log' : ''}`}>
@@ -37,7 +44,10 @@ const MainLayout: React.FC<MainLayoutProps> = ({ handleLogout }) => {
         </div>
       </header>
 
-      <main className={`app-shell__main safe-x ${isLog ? 'app-shell__main--log' : ''}`}>
+      <main
+        ref={mainRef}
+        className={`app-shell__main safe-x ${isLog ? 'app-shell__main--log' : ''}`}
+      >
         <div className={`app-container animate-fade-in ${isLog ? 'app-container--log' : ''}`}>
           <Outlet />
         </div>
