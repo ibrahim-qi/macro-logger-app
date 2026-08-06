@@ -519,7 +519,7 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
       </button>
     )
   ) : loadingVisible ? (
-    parseMode === 'voice' && onRetryVoice ? (
+    parseMode === 'voice' && onRetryVoice && displayTranscript?.trim() ? (
       <div className="parse-sheet-actions">
         <button type="button" onClick={handleDismiss} className="parse-sheet-cancel">
           Cancel

@@ -11,11 +11,11 @@ import TranscriptCorrectBlock from './TranscriptCorrectBlock';
 
 const MIN_HOLD_MS = 700;
 const SUBLABEL_AFTER_MS = 8000;
-const STAGES: Array<{ id: ParseProgressStage; label: string }> = [
-  { id: 'transcribing', label: 'Listen' },
-  { id: 'identifying', label: 'Foods' },
-  { id: 'looking_up', label: 'Sources' },
-  { id: 'estimating', label: 'Macros' },
+const STAGE_ORDER: ParseProgressStage[] = [
+  'transcribing',
+  'identifying',
+  'looking_up',
+  'estimating',
 ];
 
 interface MealParseLoadingProps {
@@ -120,8 +120,8 @@ const MealParseLoading: React.FC<MealParseLoadingProps> = ({
       return;
     }
 
-    const prevIndex = STAGES.findIndex((item) => item.id === displayStageRef.current);
-    const nextIndex = STAGES.findIndex((item) => item.id === stage);
+    const prevIndex = STAGE_ORDER.indexOf(displayStageRef.current as ParseProgressStage);
+    const nextIndex = STAGE_ORDER.indexOf(stage);
     if (prevIndex >= 0 && nextIndex >= 0 && nextIndex < prevIndex) {
       pendingStageRef.current = null;
       clearHoldTimer();
@@ -144,17 +144,18 @@ const MealParseLoading: React.FC<MealParseLoadingProps> = ({
 
   const labelStage = displayStage ?? stage;
   const label = getParseStageLabel(labelStage, mode, experience.firstName);
-  const sublabel = showSublabel ? getParseStageSublabel(labelStage) : null;
-  // Step chips only before transcript arrives — label alone is enough afterward.
-  const showSteps = !hasTranscript && !editing;
-  const visibleStages = mode === 'text' ? STAGES.slice(1) : STAGES;
-  const stageForSteps = labelStage && visibleStages.some((item) => item.id === labelStage)
-    ? labelStage
-    : visibleStages[0]?.id;
-  const activeStageIndex = Math.max(
-    0,
-    visibleStages.findIndex((item) => item.id === stageForSteps),
-  );
+  const sublabel = showSublabel
+    ? getParseStageSublabel(labelStage, hasTranscript)
+    : null;
+
+  const visibleStages = mode === 'text' ? STAGE_ORDER.slice(1) : STAGE_ORDER;
+  const stageIndex = labelStage ? visibleStages.indexOf(labelStage) : -1;
+  // Quiet determinate fill — never looks finished until the sheet exits to review.
+  const progressFill = exiting
+    ? 1
+    : stageIndex < 0
+      ? 0.1
+      : Math.min(0.94, (stageIndex + 1) / visibleStages.length);
 
   return (
     <div
@@ -187,32 +188,27 @@ const MealParseLoading: React.FC<MealParseLoadingProps> = ({
         />
       )}
 
-      {hasTranscript && !editing && (
-        <div className="parse-wait__shimmer" aria-hidden="true" />
-      )}
-
       {!editing && (
         <>
+          <div
+            className="parse-wait__progress"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(progressFill * 100)}
+            aria-label="Meal analysis progress"
+          >
+            <div className="parse-wait__progress-track">
+              <div
+                className="parse-wait__progress-fill"
+                style={{ transform: `scaleX(${progressFill})` }}
+              />
+            </div>
+          </div>
+
           <p key={label} className="parse-wait__stage-label">{label}</p>
           {sublabel && (
             <p className="parse-wait__stage-sublabel">{sublabel}</p>
-          )}
-
-          {showSteps && (
-            <ol className="parse-wait__steps" aria-label="Meal analysis progress">
-              {visibleStages.map((item, index) => (
-                <li
-                  key={item.id}
-                  className={`parse-wait__step ${index < activeStageIndex ? 'parse-wait__step--done' : ''} ${index === activeStageIndex ? 'parse-wait__step--active' : ''}`}
-                  aria-current={index === activeStageIndex ? 'step' : undefined}
-                >
-                  <span className="parse-wait__step-dot" aria-hidden="true">
-                    {index < activeStageIndex ? '✓' : ''}
-                  </span>
-                  <span>{item.label}</span>
-                </li>
-              ))}
-            </ol>
           )}
         </>
       )}

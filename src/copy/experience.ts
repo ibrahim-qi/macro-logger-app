@@ -194,34 +194,34 @@ export function getParseStageLabel(
   mode: 'voice' | 'text',
   firstName?: string | null,
 ): string {
-  const gotIt = firstName ? `Got it, ${firstName}` : 'Got it';
+  const named = firstName ? `, ${firstName}` : '';
 
   switch (stage) {
     case 'transcribing':
-      return gotIt;
+      return mode === 'voice' ? `One moment${named}` : `Reading that${named}`;
     case 'identifying':
-      return 'Picking out the foods';
+      return 'Finding the foods';
     case 'looking_up':
       return 'Checking UK sources';
     case 'estimating':
-      return 'Adding it all up';
+      return 'Adding it up';
     default:
-      return mode === 'text' ? 'Reading your meal' : gotIt;
+      return mode === 'text' ? `Reading that${named}` : `One moment${named}`;
   }
 }
 
 /** Shown once after 8s on the same displayed stage (long-wait reassurance). */
-export function getParseStageSublabel(stage: ParseProgressStage | null): string {
+export function getParseStageSublabel(
+  stage: ParseProgressStage | null,
+  hasTranscript = false,
+): string {
+  if (hasTranscript) return 'Still working — edit or retake anytime';
   if (stage === 'looking_up') return 'Still checking — a few more seconds';
-  return 'Nearly there';
+  return 'Hang tight';
 }
 
 export function getResearchTrustLine(): string {
   return 'UK evidence used where available';
-}
-
-export function getVoiceProcessingHint(): string {
-  return 'Got it — one moment';
 }
 
 export function getVoiceLongRecordingHint(): string {

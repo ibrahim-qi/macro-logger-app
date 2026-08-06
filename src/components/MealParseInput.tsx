@@ -13,7 +13,6 @@ import type { ParseMealResponse, ParseProgressStage } from '../types/mealParse';
 import {
   getVoiceLongRecordingHint,
   getVoiceMaxDurationHint,
-  getVoiceProcessingHint,
   getTextParsingCtaLabel,
 } from '../copy/experience';
 import {
@@ -57,7 +56,7 @@ function formatRecordingTime(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-type VoiceHint = 'idle' | 'listening' | 'analysing';
+type VoiceHint = 'idle' | 'listening';
 
 const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
   onParsed,
@@ -73,6 +72,8 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [isPressing, setIsPressing] = useState(false);
   const [rippleKey, setRippleKey] = useState(0);
+  /** True from Done/submit until the sheet owns the wait — hides dual busy chrome. */
+  const [handedOff, setHandedOff] = useState(false);
   const parseGenerationRef = useRef(0);
   const finishingRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -111,6 +112,8 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
       abortControllerRef.current = null;
       parseGenerationRef.current += 1;
       if (isRecording) cancelRecording();
+      finishingRef.current = false;
+      setHandedOff(false);
       setLoading(false);
       setError(null);
     },
@@ -131,6 +134,10 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
     return () => window.clearInterval(timer);
   }, [isRecording]);
 
+  useEffect(() => {
+    if (!reviewActive && !loading) setHandedOff(false);
+  }, [reviewActive, loading]);
+
   const handleParseText = async () => {
     if (reviewActive) return;
     const trimmed = text.trim();
@@ -145,6 +152,7 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
     }
 
     const { generation, signal } = startNewParseGeneration();
+    setHandedOff(true);
     setLoading(true);
     setError(null);
     hapticLight();
@@ -181,7 +189,7 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
   };
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (event.button !== 0 || loading || reviewActive) return;
+    if (event.button !== 0 || loading || handedOff || reviewActive) return;
     setIsPressing(true);
   };
 
@@ -218,6 +226,8 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
     hapticLight();
     const doneAt = performance.now();
 
+    // Sheet owns the wait from this frame — no orb spinner / Listening chrome.
+    setHandedOff(true);
     setLoading(true);
     onParseStart?.({ mode: 'voice' });
 
@@ -283,35 +293,35 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
   const handleCancelRecording = () => {
     cancelRecording();
     finishingRef.current = false;
+    setHandedOff(false);
     setLoading(false);
     setError(null);
     hapticLight();
     window.setTimeout(() => micButtonRef.current?.focus(), 0);
   };
 
-  const isProcessing = loading && !isRecording && !reviewActive;
-  const micDisabled = reviewActive || (loading && !isRecording) || !isSupported;
+  const liveRecording = isRecording && !handedOff && !reviewActive;
+  const stageQuiet = handedOff || reviewActive;
+  const micDisabled = stageQuiet || loading || !isSupported;
   const maxDurationSec = Math.floor(maxDurationMs / 1000);
   const countdownWindowSec = 5;
-  const countdownActive = isRecording && recordingSeconds >= maxDurationSec - countdownWindowSec;
+  const countdownActive = liveRecording && recordingSeconds >= maxDurationSec - countdownWindowSec;
   const countdownProgress = countdownActive
     ? Math.min(1, (recordingSeconds - (maxDurationSec - countdownWindowSec)) / countdownWindowSec)
-    : isRecording
+    : liveRecording
       ? Math.min(0.92, recordingSeconds / maxDurationSec)
       : 0;
   const voiceStyle = {
-    '--voice-level': isRecording ? audioLevel : 0,
+    '--voice-level': liveRecording ? audioLevel : 0,
     '--countdown-progress': countdownProgress,
   } as CSSProperties;
 
-  let voiceHint: VoiceHint = 'idle';
-  if (isRecording) voiceHint = 'listening';
-  else if (isProcessing) voiceHint = 'analysing';
+  const voiceHint: VoiceHint = liveRecording ? 'listening' : 'idle';
 
   return (
     <div className="log-voice-input">
       <div
-        className={`sahha-voice sahha-voice--log ${isRecording ? 'sahha-voice--live' : ''} ${isProcessing ? 'sahha-voice--busy' : ''} ${reviewActive ? 'sahha-voice--dimmed' : ''} ${!isRecording && !isProcessing ? 'sahha-voice--idle' : ''}`}
+        className={`sahha-voice sahha-voice--log ${liveRecording ? 'sahha-voice--live' : ''} ${stageQuiet ? 'sahha-voice--dimmed' : ''} ${!liveRecording && !stageQuiet ? 'sahha-voice--idle' : ''}`}
         style={voiceStyle}
       >
         <button
@@ -323,19 +333,18 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
           onPointerLeave={clearPress}
           onPointerCancel={clearPress}
           disabled={micDisabled}
-          aria-label={isRecording ? 'Finish speaking' : 'Start voice recording'}
-          aria-pressed={isRecording}
+          aria-label={liveRecording ? 'Finish speaking' : 'Start voice recording'}
+          aria-pressed={liveRecording}
           className={[
             'sahha-voice__orb',
             'sahha-voice__orb--log',
-            isRecording ? 'sahha-voice__orb--live' : '',
-            isProcessing ? 'sahha-voice__orb--busy' : '',
+            liveRecording ? 'sahha-voice__orb--live' : '',
             isPressing ? 'sahha-voice__orb--press' : '',
             countdownActive ? 'sahha-voice__orb--countdown' : '',
           ].filter(Boolean).join(' ')}
         >
           <span className="sahha-voice__surface" aria-hidden="true" />
-          {isRecording && (
+          {liveRecording && (
             <span
               className={`sahha-voice__countdown ${countdownActive ? 'sahha-voice__countdown--urgent' : ''}`}
               aria-hidden="true"
@@ -345,25 +354,21 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
           <span className="sahha-voice__halo" aria-hidden="true" />
           <span key={rippleKey} className="sahha-voice__ripple" aria-hidden="true" />
 
-          {isProcessing ? (
-            <div className="spinner w-8 h-8 sahha-voice__spinner" />
-          ) : (
-            <SahhaMark className="brand-mark--hero-lg sahha-voice__mark" glow />
-          )}
+          <SahhaMark className="brand-mark--hero-lg sahha-voice__mark" glow />
 
-          {isRecording && (
+          {liveRecording && (
             <span className="sahha-voice__finish">Done</span>
           )}
         </button>
 
         <div className="sahha-voice__status">
-          {isRecording && (
+          {liveRecording && (
             <p key="timer" className="sahha-voice__timer tabular-nums" aria-live="off" aria-label={`${recordingSeconds} seconds recorded`}>
               {formatRecordingTime(recordingSeconds)}
             </p>
           )}
 
-          {isSupported && !reviewActive && (
+          {isSupported && !stageQuiet && (
             <p key={voiceHint} className="sahha-voice__hint">
               {voiceHint === 'listening' && (
                 countdownActive
@@ -372,14 +377,13 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
                     ? getVoiceLongRecordingHint()
                     : 'Listening…'
               )}
-              {voiceHint === 'analysing' && getVoiceProcessingHint()}
               {voiceHint === 'idle' && 'Tap to speak'}
             </p>
           )}
           {!isSupported && (
             <p className="sahha-voice__hint">Voice recording is not supported here. Type your meal below.</p>
           )}
-          {isRecording && (
+          {liveRecording && (
             <button
               type="button"
               className="sahha-voice__cancel"
@@ -398,29 +402,25 @@ const MealParseInput = forwardRef<MealParseInputHandle, MealParseInputProps>(({
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && text.trim() && !loading && !isRecording && !reviewActive) {
+              if (e.key === 'Enter' && text.trim() && !loading && !liveRecording && !stageQuiet) {
                 e.preventDefault();
                 void handleParseText();
               }
             }}
             placeholder="…or type it"
             className="log-type-field__input"
-            disabled={loading || isRecording || reviewActive}
+            disabled={loading || liveRecording || stageQuiet}
           />
           <button
             type="button"
             onClick={handleParseText}
-            disabled={loading || isRecording || reviewActive || !text.trim()}
+            disabled={loading || liveRecording || stageQuiet || !text.trim()}
             className={`log-type-field__submit ${text.trim() ? 'log-type-field__submit--ready' : ''}`}
-            aria-label={loading && !isRecording ? getTextParsingCtaLabel() : 'Log typed meal'}
+            aria-label={stageQuiet ? getTextParsingCtaLabel() : 'Log typed meal'}
           >
-            {loading && !isRecording ? (
-              <span className="spinner log-type-field__spinner" aria-hidden="true" />
-            ) : (
-              <svg className="log-type-field__submit-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.25} d="M5 10l7-7m0 0l7 7m-7-7v18" />
-              </svg>
-            )}
+            <svg className="log-type-field__submit-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.25} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+            </svg>
           </button>
         </div>
       </div>
