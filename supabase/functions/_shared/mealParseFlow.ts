@@ -330,40 +330,43 @@ async function resolveFromNutritionDb(
   bestEffort = false,
 ): Promise<Map<string, ResolvedNutrition>> {
   const resolved = new Map<string, ResolvedNutrition>();
-  await Promise.all(
-    items.map(async (item) => {
-      // Solids only — drinks (volume, no weight) keep the per_100ml Serper path.
-      if (item.reference_weight_g == null) return;
-      const hit = await lookupNutritionDb(item.food_name, bestEffort);
-      if (!hit) return;
-      const fact: NutritionEvidenceFact = {
-        item_id: item.item_id,
-        basis: 'per_100g',
-        basis_amount: 100,
-        calories: hit.calories,
-        protein: hit.protein,
-        carbs: hit.carbs,
-        fats: hit.fats,
-        serving_weight_g: null,
-        serving_volume_ml: null,
-        confidence: bestEffort ? 'low' : 'high',
-        source_title: 'Open Food Facts',
-        source_url: hit.source_url,
-        evidence_quote: hit.food_name,
-      };
-      const values = computeNutrition(item, fact);
-      if (!values) return;
-      resolved.set(item.item_id, {
-        values,
-        fact,
-        evidence_status: 'uk_evidence',
-        source_note: hit.food_name,
-        source_title: 'Open Food Facts',
-        source_url: hit.source_url,
-        evidence_quote: hit.food_name,
-      });
-    }),
-  );
+  // Solids only — drinks (volume, no weight) keep the per_100ml Serper path.
+  const resolvable = items.filter((item) => item.reference_weight_g != null);
+  // OFF rate-limits aggressively — process in small batches (3 concurrent max).
+  for (const batch of chunkArray(resolvable, 3)) {
+    await Promise.all(
+      batch.map(async (item) => {
+        const hit = await lookupNutritionDb(item.food_name, bestEffort);
+        if (!hit) return;
+        const fact: NutritionEvidenceFact = {
+          item_id: item.item_id,
+          basis: 'per_100g',
+          basis_amount: 100,
+          calories: hit.calories,
+          protein: hit.protein,
+          carbs: hit.carbs,
+          fats: hit.fats,
+          serving_weight_g: null,
+          serving_volume_ml: null,
+          confidence: bestEffort ? 'low' : 'high',
+          source_title: 'Open Food Facts',
+          source_url: hit.source_url,
+          evidence_quote: hit.food_name,
+        };
+        const values = computeNutrition(item, fact);
+        if (!values) return;
+        resolved.set(item.item_id, {
+          values,
+          fact,
+          evidence_status: 'uk_evidence',
+          source_note: hit.food_name,
+          source_title: 'Open Food Facts',
+          source_url: hit.source_url,
+          evidence_quote: hit.food_name,
+        });
+      }),
+    );
+  }
   return resolved;
 }
 
