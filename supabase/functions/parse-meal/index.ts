@@ -69,7 +69,9 @@ function getNanoGptConfig() {
     // override with NANOGPT_STT_MODEL=Whisper-Large-V3 if needed.
     sttModel: Deno.env.get('NANOGPT_STT_MODEL') ?? 'gpt-4o-mini-transcribe',
     parseModel: Deno.env.get('NANOGPT_PARSE_MODEL') ?? 'google/gemini-3.6-flash',
-    interpretationModel: Deno.env.get('NANOGPT_INTERPRETATION_MODEL') || undefined,
+    // Reasoning model for interpretation — the "brain" that turns a transcript
+    // into structured items. Override with NANOGPT_INTERPRETATION_MODEL.
+    interpretationModel: Deno.env.get('NANOGPT_INTERPRETATION_MODEL') ?? 'openai/gpt-5.6-terra',
     extractionModel:
       Deno.env.get('NANOGPT_EXTRACTION_MODEL') ??
       'google/gemini-3.5-flash-lite',

@@ -7,8 +7,10 @@ import {
   buildEvidenceUserMessage,
   buildFallbackUserMessage,
   buildInterpretationSystemPrompt,
+  buildSelfCheckUserMessage,
   EVIDENCE_EXTRACTION_SYSTEM_PROMPT,
   FALLBACK_ESTIMATION_SYSTEM_PROMPT,
+  INTERPRETATION_SELF_CHECK_SYSTEM_PROMPT,
   MEAL_INTERPRETATION_SCHEMA,
   NUTRITION_EVIDENCE_SCHEMA,
   NUTRITION_FALLBACK_SCHEMA,
@@ -123,6 +125,7 @@ async function callNanoGptJson<T>(
   schemaName: string,
   schema: Record<string, unknown>,
   maxTokens: number,
+  reasoningEffort: string = 'low',
 ): Promise<T> {
   let lastError: unknown;
   let includeReasoningEffort = true;
@@ -142,7 +145,7 @@ async function callNanoGptJson<T>(
           json_schema: { name: schemaName, strict: true, schema },
         },
       };
-      if (includeReasoningEffort) body.reasoning_effort = 'low';
+      if (includeReasoningEffort) body.reasoning_effort = reasoningEffort;
 
       const response = await fetch(`${config.baseUrl}/chat/completions`, {
         method: 'POST',
@@ -252,6 +255,34 @@ function rejectInterpretation(
     !/\d/.test(mealText)
   ) {
     throw new ParseRejectionError('no_meal_detected', mealText, 4);
+  }
+}
+
+async function selfCheckInterpretation(
+  config: NanoGptConfig,
+  mealText: string,
+  interpretation: MealInterpretation,
+): Promise<MealInterpretation> {
+  try {
+    const raw = await callNanoGptJson<MealInterpretation>(
+      config,
+      config.interpretationModel ?? config.model,
+      INTERPRETATION_SELF_CHECK_SYSTEM_PROMPT,
+      buildSelfCheckUserMessage(mealText, interpretation.items),
+      'meal_interpretation_refined',
+      MEAL_INTERPRETATION_SCHEMA as unknown as Record<string, unknown>,
+      INTERPRETATION_MAX_TOKENS,
+      'high',
+    );
+    const corrected = normalizeInterpretation(raw);
+    // Preserve the validated input assessment; the self-check only refines items.
+    corrected.input_assessment = interpretation.input_assessment;
+    // Guard: never lose items the first pass correctly found.
+    if (!corrected.items.length && interpretation.items.length) return interpretation;
+    return corrected;
+  } catch (error) {
+    console.warn('[parse] interpretation self-check failed; keeping first pass', error);
+    return interpretation;
   }
 }
 
@@ -519,9 +550,15 @@ export async function parseMealWithResearch(
     'meal_interpretation',
     MEAL_INTERPRETATION_SCHEMA as unknown as Record<string, unknown>,
     INTERPRETATION_MAX_TOKENS,
+    'high',
   );
-  const interpretation = sanifyInterpretationPortions(
+  const firstPass = sanifyInterpretationPortions(
     normalizeInterpretation(rawInterpretation),
+    mealText,
+  );
+  rejectInterpretation(firstPass, mealText);
+  const interpretation = sanifyInterpretationPortions(
+    await selfCheckInterpretation(config, mealText, firstPass),
     mealText,
   );
   rejectInterpretation(interpretation, mealText);
