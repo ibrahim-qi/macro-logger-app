@@ -36,13 +36,8 @@ const brandMarkSvg = readFileSync(resolve(publicDir, 'brand-mark.svg'), 'utf8');
 
 // Transparent glyph-only variant of the tile, used for the inline brand mark.
 const glyphSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
-  <text x="256" y="310" text-anchor="middle" font-family="${GLYPH_FONT}" font-size="240" font-weight="700" fill="${MINT}">5</text>
+  <text x="256" y="376" text-anchor="middle" font-family="${GLYPH_FONT}" font-size="360" font-weight="700" fill="${MINT}">5</text>
 </svg>`;
-
-async function currentDims(file) {
-  const m = await sharp(file).metadata();
-  return { width: m.width, height: m.height };
-}
 
 async function render(svg, outFile, { width, height, fit }) {
   await sharp(Buffer.from(svg))
@@ -54,16 +49,15 @@ async function render(svg, outFile, { width, height, fit }) {
 }
 
 async function main() {
-  const logo = await currentDims(resolve(publicDir, 'sahha-logo.png'));
-  const mark = await currentDims(resolve(publicDir, 'brand-mark.png'));
   console.log('Regenerating raster icons from public/*.svg');
 
-  // Marks (transparent canvas, aspect-preserving letterbox).
+  // Marks: square canvas (natural viewBox aspect) so they render at the
+  // correct square aspect beside the wordmark — no letterbox side margins.
   await render(glyphSvg, resolve(publicDir, 'sahha-logo.png'), {
-    width: logo.width, height: logo.height, fit: 'contain',
+    width: 512, height: 512, fit: 'fill',
   });
   await render(brandMarkSvg, resolve(publicDir, 'brand-mark.png'), {
-    width: mark.width, height: mark.height, fit: 'contain',
+    width: 512, height: 512, fit: 'fill',
   });
 
   // App tiles (square source -> square target, no distortion).
