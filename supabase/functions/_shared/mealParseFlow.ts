@@ -5,20 +5,16 @@ import { ParseRejectionError } from './parseRejection.ts';
 import { MEAL_HINT } from './transcriptValidation.ts';
 import {
   buildEvidenceUserMessage,
-  buildFallbackUserMessage,
   buildInterpretationSystemPrompt,
   buildSelfCheckUserMessage,
   EVIDENCE_EXTRACTION_SYSTEM_PROMPT,
-  FALLBACK_ESTIMATION_SYSTEM_PROMPT,
   INTERPRETATION_SELF_CHECK_SYSTEM_PROMPT,
   MEAL_INTERPRETATION_SCHEMA,
   NUTRITION_EVIDENCE_SCHEMA,
-  NUTRITION_FALLBACK_SCHEMA,
   PARSE_TEMPERATURE,
   type InterpretedMealItem,
   type MealInterpretation,
   type NutritionEvidenceFact,
-  type NutritionFallbackFact,
   type NutritionFactBase,
   type ParsePromptContext,
 } from './mealParsePrompt.ts';
@@ -52,7 +48,6 @@ export interface ParseTimings {
   interpretation_ms: number;
   serper_ms?: number;
   extraction_ms?: number;
-  fallback_ms?: number;
   total_ms: number;
   path: 'fast' | 'research';
 }
@@ -77,9 +72,6 @@ interface ParseFlowOptions {
 const INTERPRETATION_MAX_TOKENS = 3200;
 const EXTRACTION_MAX_TOKENS = 1800;
 const EXTRACTION_BATCH_SIZE = 6;
-const FALLBACK_MAX_TOKENS = 1600;
-const FALLBACK_BATCH_SIZE = 5;
-const FALLBACK_SINGLE_MAX_TOKENS = 900;
 const NANOGPT_TIMEOUT_MS = 45_000;
 
 function chunkArray<T>(items: T[], size: number): T[][] {
@@ -290,7 +282,7 @@ async function selfCheckInterpretation(
 interface ResolvedNutrition {
   values: ComputedNutrition;
   fact: NutritionFactBase;
-  evidence_status: 'uk_evidence' | 'ai_estimate';
+  evidence_status: 'uk_evidence';
   source_note: string;
   source_title?: string;
   source_url?: string;
@@ -328,29 +320,6 @@ function evidenceResolutions(
       source_title: fact.source_title,
       source_url: fact.source_url,
       evidence_quote: fact.evidence_quote,
-    });
-  }
-  return resolved;
-}
-
-function fallbackResolutions(
-  facts: NutritionFallbackFact[],
-  items: InterpretedMealItem[],
-): Map<string, ResolvedNutrition> {
-  const itemById = new Map(items.map((item) => [item.item_id, item]));
-  const resolved = new Map<string, ResolvedNutrition>();
-  for (const fact of facts) {
-    if (resolved.has(fact.item_id)) continue;
-    const item = itemById.get(fact.item_id);
-    if (!item) continue;
-    const values = computeNutrition(item, fact);
-    if (!values) continue;
-    resolved.set(fact.item_id, {
-      values,
-      fact,
-      evidence_status: 'ai_estimate',
-      source_note: `AI estimate${fact.estimate_note ? ` — ${fact.estimate_note}` : ''}`,
-      source_title: 'AI estimate',
     });
   }
   return resolved;
@@ -431,64 +400,6 @@ async function extractEvidenceBatches(
       }
     } catch (error) {
       console.error('[parse] evidence extraction batch failed', error);
-    }
-  }
-
-  return resolved;
-}
-
-async function estimateFallbackBatches(
-  config: NanoGptConfig,
-  mealText: string,
-  items: InterpretedMealItem[],
-): Promise<Map<string, ResolvedNutrition>> {
-  const resolved = new Map<string, ResolvedNutrition>();
-
-  for (const batch of chunkArray(items, FALLBACK_BATCH_SIZE)) {
-    try {
-      const fallback = await callNanoGptJson<{ facts: NutritionFallbackFact[] }>(
-        config,
-        config.fallbackModel ?? config.model,
-        FALLBACK_ESTIMATION_SYSTEM_PROMPT,
-        buildFallbackUserMessage(mealText, batch),
-        'nutrition_fallback',
-        NUTRITION_FALLBACK_SCHEMA as unknown as Record<string, unknown>,
-        FALLBACK_MAX_TOKENS,
-      );
-      for (const [itemId, value] of fallbackResolutions(
-        fallback.facts ?? [],
-        batch,
-      )) {
-        resolved.set(itemId, value);
-      }
-    } catch (error) {
-      console.error('[parse] AI nutrition fallback batch failed', error);
-    }
-  }
-
-  const remaining = items.filter((item) => !resolved.has(item.item_id));
-  for (const item of remaining) {
-    try {
-      const fallback = await callNanoGptJson<{ facts: NutritionFallbackFact[] }>(
-        config,
-        config.fallbackModel ?? config.model,
-        FALLBACK_ESTIMATION_SYSTEM_PROMPT,
-        buildFallbackUserMessage(mealText, [item]),
-        'nutrition_fallback',
-        NUTRITION_FALLBACK_SCHEMA as unknown as Record<string, unknown>,
-        FALLBACK_SINGLE_MAX_TOKENS,
-      );
-      for (const [itemId, value] of fallbackResolutions(
-        fallback.facts ?? [],
-        [item],
-      )) {
-        resolved.set(itemId, value);
-      }
-    } catch (error) {
-      console.error('[parse] AI nutrition fallback single-item failed', {
-        item_id: item.item_id,
-        food_name: item.food_name,
-      }, error);
     }
   }
 
@@ -667,22 +578,9 @@ export async function parseMealWithResearch(
     }
   }
 
-  const fallbackItems = researchItems.filter((item) => !resolved.has(item.item_id));
-  let fallbackMs: number | undefined;
-  if (fallbackItems.length) {
-    onProgress?.('estimating');
-    const fallbackStartedAt = nowMs();
-    for (const [itemId, value] of (await estimateFallbackBatches(
-      config,
-      mealText,
-      fallbackItems,
-    )).entries()) {
-      resolved.set(itemId, value);
-    }
-    fallbackMs = Math.round(nowMs() - fallbackStartedAt);
-  } else {
-    onProgress?.('estimating');
-  }
+  // No AI estimates — an item without verified evidence stays "unavailable"
+  // (0 macros, review-before-logging) rather than a made-up number.
+  onProgress?.('estimating');
 
   const items = applyMacroSanity(
     normalizeItems(interpretation.items.map((item) => {
@@ -692,13 +590,11 @@ export async function parseMealWithResearch(
   );
 
   const evidenceCount = items.filter((item) => item.evidence_status === 'uk_evidence').length;
-  const estimateCount = items.filter((item) => item.evidence_status === 'ai_estimate').length;
   const unavailableCount = items.filter((item) => item.evidence_status === 'unavailable').length;
   const notes = [
     interpretation.notes,
-    estimateCount ? `${estimateCount} item${estimateCount === 1 ? '' : 's'} used an AI estimate.` : '',
     unavailableCount
-      ? `${unavailableCount} item${unavailableCount === 1 ? '' : 's'} could not be estimated; review before logging.`
+      ? `${unavailableCount} item${unavailableCount === 1 ? '' : 's'} could not be verified; review before logging.`
       : '',
   ].filter(Boolean).join(' ').trim() || undefined;
   const path = evidenceCount > 0 ? 'research' as const : 'fast' as const;
@@ -714,7 +610,6 @@ export async function parseMealWithResearch(
     interpretation_ms: interpretationMs,
     serper_ms: serperMs,
     extraction_ms: extractionMs,
-    fallback_ms: fallbackMs,
     total_ms: Math.round(nowMs() - startedAt),
     path,
   });
