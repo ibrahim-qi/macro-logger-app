@@ -60,7 +60,7 @@ interface SahhaWordmarkProps {
 export function SahhaWordmark({ className = '', size = 'header' }: SahhaWordmarkProps) {
   return (
     <span className={`sahha-logo sahha-logo--${size} ${className}`.trim()} aria-hidden="true">
-      <span className="sahha-logo__word">Sahha</span>
+      <span className="sahha-logo__word">Soha</span>
     </span>
   );
 }
@@ -83,13 +83,13 @@ const SahhaBrand: React.FC<SahhaBrandProps> = ({
 
   const lockupText = showWordmark ? (
     <span className={`brand-wordmark ${wordmarkClass}`.trim()} aria-hidden="true">
-      Sahha
+      Soha
     </span>
   ) : null;
 
   if (variant === 'mark') {
     return (
-      <div className={`brand-lockup brand-lockup--mark ${className}`.trim()} aria-label="Sahha">
+      <div className={`brand-lockup brand-lockup--mark ${className}`.trim()} aria-label="Soha">
         <SahhaMark src={logoSrc} className={headerMark[size]} glow />
       </div>
     );
@@ -99,7 +99,7 @@ const SahhaBrand: React.FC<SahhaBrandProps> = ({
     return (
       <div
         className={`brand-lockup brand-lockup--hero brand-lockup--${size} ${className}`.trim()}
-        aria-label="Sahha"
+        aria-label="Soha"
       >
         <SahhaMark src={logoSrc} className={heroMark[size]} glow />
         {lockupText}
@@ -117,7 +117,7 @@ const SahhaBrand: React.FC<SahhaBrandProps> = ({
     return (
       <div
         className={`brand-lockup brand-lockup--header-center brand-lockup--integrated brand-lockup--${size} ${className}`.trim()}
-        aria-label="Sahha"
+        aria-label="Soha"
       >
         <SahhaMark src={logoSrc} className={headerCenterMark[size]} glow />
         {lockupText}
@@ -130,7 +130,7 @@ const SahhaBrand: React.FC<SahhaBrandProps> = ({
       className={`brand-lockup brand-lockup--header brand-lockup--integrated brand-lockup--${size}${
         !showWordmark ? ' brand-lockup--mark-only' : ''
       } ${className}`.trim()}
-      aria-label="Sahha"
+      aria-label="Soha"
     >
       <SahhaMark src={logoSrc} className={headerMark[size]} glow={showWordmark} />
       {lockupText}

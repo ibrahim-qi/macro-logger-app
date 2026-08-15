@@ -79,7 +79,7 @@ export function getEmptyStateBody(ctx: ExperienceContext): string {
   if (ctx.streak > 0) {
     return `Keep your ${ctx.streak}-day streak — say what you ate, review, then log.`;
   }
-  return 'Say what you ate. Sahha estimates the nutrition — you confirm before anything is saved.';
+  return 'Say what you ate. Soha estimates the nutrition — you confirm before anything is saved.';
 }
 
 export function getEmptyStateCta(ctx: ExperienceContext): string {
@@ -102,7 +102,7 @@ export function getLogPageLabel(ctx: ExperienceContext): string {
 
 /** Boot / tab loading copy */
 export function getBootLoadingLabel(): string {
-  return 'Opening Sahha';
+  return 'Opening Soha';
 }
 
 export function getBootLoadingSublabel(): string {
@@ -133,7 +133,7 @@ export function getGoalsSavedMessage(): string {
 }
 
 export function getNameSetupBody(): string {
-  return 'What should we call you? Sahha uses your first name to personalise prompts and summaries.';
+  return 'What should we call you? Soha uses your first name to personalise prompts and summaries.';
 }
 
 export function getGoalsOnboardingTitle(): string {
@@ -141,7 +141,7 @@ export function getGoalsOnboardingTitle(): string {
 }
 
 export function getGoalsOnboardingBody(): string {
-  return 'Calorie and macro goals help Sahha track your day calmly — adjust these anytime in Targets.';
+  return 'Calorie and macro goals help Soha track your day calmly — adjust these anytime in Targets.';
 }
 
 export function getMicIntroTitle(): string {
@@ -263,7 +263,7 @@ export function getGenericParseFailureMessage(): string {
 }
 
 export function getNetworkUnreachableMessage(): string {
-  return 'Can\'t reach Sahha right now. Check your connection and try again.';
+  return 'Can\'t reach Soha right now. Check your connection and try again.';
 }
 
 export function getSessionExpiredMessage(): string {

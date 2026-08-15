@@ -27,7 +27,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ handleLogout }) => {
         <div className="app-container app-bar__inner app-bar__inner--centered">
           <div className="app-bar__side" aria-hidden="true" />
 
-          <Link to="/" className="app-bar__center" aria-label="Sahha home">
+          <Link to="/" className="app-bar__center" aria-label="Soha home">
             <SahhaWordmark size="header" />
           </Link>
 

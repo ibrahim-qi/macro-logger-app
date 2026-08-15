@@ -47,7 +47,7 @@ const GoalsTab: React.FC<GoalsTabProps> = ({
     return (
       <div className={`empty-panel ${isActive ? 'opacity-100' : 'opacity-0'}`}>
         <h3 className="empty-panel__title">Set your targets</h3>
-        <p className="empty-panel__body">Daily calorie and macro goals help Sahha track your progress calmly, without pressure.</p>
+        <p className="empty-panel__body">Daily calorie and macro goals help Soha track your progress calmly, without pressure.</p>
         <button type="button" onClick={onGoalsClick} className="btn-primary max-w-[14rem] mx-auto">
           {getSetTargetsCta()}
         </button>

@@ -37,3 +37,6 @@ supabase/.temp/
 *.njsproj
 *.sln
 *.sw?
+.aider*
+macro-logger-copilot/
+.claude/

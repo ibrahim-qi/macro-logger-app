@@ -1,7 +1,6 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
 import DayMetrics from './DayMetrics';
-import { getGreeting, getNoGoalsHeroMessage, getSetTargetsCta, getTodayContextLine } from '../copy/experience';
+import { getGreeting, getNoGoalsHeroMessage, getSetTargetsCta } from '../copy/experience';
 import { useUserExperience } from '../context/userExperience';
 
 interface UserGoals {
@@ -27,7 +26,6 @@ interface TodayHeroProps {
 
 const TodayHero: React.FC<TodayHeroProps> = ({ dailyTotals, userGoals, streak, onSetTargets }) => {
   const { experience } = useUserExperience();
-  const contextLine = getTodayContextLine(experience);
 
   return (
     <section className="today-summary">
@@ -46,10 +44,6 @@ const TodayHero: React.FC<TodayHeroProps> = ({ dailyTotals, userGoals, streak, o
         </div>
       )}
 
-      {contextLine && (
-        <p className="today-summary__context">{contextLine}</p>
-      )}
-
       <p className="today-summary__whisper">
         {getGreeting(experience)}
         {streak > 1 && (
@@ -59,10 +53,6 @@ const TodayHero: React.FC<TodayHeroProps> = ({ dailyTotals, userGoals, streak, o
           </>
         )}
       </p>
-
-      <Link to="/log" className="today-summary__action">
-        Log a meal
-      </Link>
     </section>
   );
 };

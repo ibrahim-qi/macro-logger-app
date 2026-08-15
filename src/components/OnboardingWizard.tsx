@@ -78,7 +78,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
   const [goalsError, setGoalsError] = useState<string | null>(null);
 
   const title = useMemo(() => {
-    if (step === 'name') return 'Welcome to Sahha';
+    if (step === 'name') return 'Welcome to Soha';
     if (step === 'goals') return 'Your daily targets';
     if (step === 'mic') return 'Meet the mic';
     return undefined;
