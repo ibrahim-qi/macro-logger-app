@@ -327,13 +327,14 @@ function evidenceResolutions(
 
 async function resolveFromNutritionDb(
   items: InterpretedMealItem[],
+  bestEffort = false,
 ): Promise<Map<string, ResolvedNutrition>> {
   const resolved = new Map<string, ResolvedNutrition>();
   await Promise.all(
     items.map(async (item) => {
       // Solids only — drinks (volume, no weight) keep the per_100ml Serper path.
       if (item.reference_weight_g == null) return;
-      const hit = await lookupNutritionDb(item.food_name);
+      const hit = await lookupNutritionDb(item.food_name, bestEffort);
       if (!hit) return;
       const fact: NutritionEvidenceFact = {
         item_id: item.item_id,
@@ -345,7 +346,7 @@ async function resolveFromNutritionDb(
         fats: hit.fats,
         serving_weight_g: null,
         serving_volume_ml: null,
-        confidence: 'high',
+        confidence: bestEffort ? 'low' : 'high',
         source_title: 'Open Food Facts',
         source_url: hit.source_url,
         evidence_quote: hit.food_name,
@@ -578,8 +579,12 @@ export async function parseMealWithResearch(
     }
   }
 
-  // No AI estimates — an item without verified evidence stays "unavailable"
-  // (0 macros, review-before-logging) rather than a made-up number.
+  // Best-effort source fallback — no item is left "unavailable" without trying
+  // the closest Open Food Facts match (low confidence, still a real source).
+  const unresolvedItems = researchItems.filter((item) => !resolved.has(item.item_id));
+  for (const [itemId, value] of (await resolveFromNutritionDb(unresolvedItems, true)).entries()) {
+    resolved.set(itemId, value);
+  }
   onProgress?.('estimating');
 
   const items = applyMacroSanity(

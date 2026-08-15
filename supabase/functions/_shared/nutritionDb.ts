@@ -77,7 +77,7 @@ function closeNameMatch(foodName: string, productName: string): boolean {
   const unexplained = productTokens.filter(
     (token) => !foodTokens.includes(token) && !GENERIC_DESCRIPTORS.has(token),
   );
-  return unexplained.length <= 1;
+  return unexplained.length <= 3;
 }
 
 interface OffProduct {
@@ -104,8 +104,11 @@ function toHit(foodName: string, product: OffProduct): NutritionDbHit | null {
   };
 }
 
-export async function lookupNutritionDb(foodName: string): Promise<NutritionDbHit | null> {
-  const key = cacheKey(foodName);
+export async function lookupNutritionDb(
+  foodName: string,
+  bestEffort = false,
+): Promise<NutritionDbHit | null> {
+  const key = `${cacheKey(foodName)}:${bestEffort ? 'best' : 'strict'}`;
   const cached = getCached(key);
   if (cached !== undefined) return cached;
 
@@ -122,17 +125,21 @@ export async function lookupNutritionDb(foodName: string): Promise<NutritionDbHi
     const payload = await response.json();
     const products: OffProduct[] = Array.isArray(payload?.products) ? payload.products : [];
 
-    // Prefer a close name match; unbranded / generic products rank first.
-    const matches = products.filter((product) =>
-      closeNameMatch(foodName, String(product.product_name ?? '')),
-    );
-    matches.sort((a, b) => {
+    // Strict mode requires a close name match; best-effort takes the top result.
+    const candidates = bestEffort
+      ? products
+      : products.filter((product) => closeNameMatch(foodName, String(product.product_name ?? '')));
+    if (!candidates.length) {
+      setCached(key, null);
+      return null;
+    }
+    candidates.sort((a, b) => {
       const aGeneric = !a.brands && Boolean(a.generic_name) ? 0 : 1;
       const bGeneric = !b.brands && Boolean(b.generic_name) ? 0 : 1;
       return aGeneric - bGeneric;
     });
 
-    const hit = matches.length ? toHit(foodName, matches[0]) : null;
+    const hit = toHit(foodName, candidates[0]);
     setCached(key, hit);
     return hit;
   } catch (error) {
