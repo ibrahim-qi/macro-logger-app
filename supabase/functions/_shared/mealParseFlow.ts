@@ -36,6 +36,7 @@ import {
   type ItemSearchResult,
 } from './webSearch.ts';
 import { normalizeItems, type ParsedFoodItem } from './normalizeItems.ts';
+import { lookupNutritionDb } from './nutritionDb.ts';
 
 export interface ParseMealFlowResult {
   items: ParsedFoodItem[];
@@ -355,6 +356,47 @@ function fallbackResolutions(
   return resolved;
 }
 
+async function resolveFromNutritionDb(
+  items: InterpretedMealItem[],
+): Promise<Map<string, ResolvedNutrition>> {
+  const resolved = new Map<string, ResolvedNutrition>();
+  await Promise.all(
+    items.map(async (item) => {
+      // Solids only — drinks (volume, no weight) keep the per_100ml Serper path.
+      if (item.reference_weight_g == null) return;
+      const hit = await lookupNutritionDb(item.food_name);
+      if (!hit) return;
+      const fact: NutritionEvidenceFact = {
+        item_id: item.item_id,
+        basis: 'per_100g',
+        basis_amount: 100,
+        calories: hit.calories,
+        protein: hit.protein,
+        carbs: hit.carbs,
+        fats: hit.fats,
+        serving_weight_g: null,
+        serving_volume_ml: null,
+        confidence: 'high',
+        source_title: 'Open Food Facts',
+        source_url: hit.source_url,
+        evidence_quote: hit.food_name,
+      };
+      const values = computeNutrition(item, fact);
+      if (!values) return;
+      resolved.set(item.item_id, {
+        values,
+        fact,
+        evidence_status: 'uk_evidence',
+        source_note: hit.food_name,
+        source_title: 'Open Food Facts',
+        source_url: hit.source_url,
+        evidence_quote: hit.food_name,
+      });
+    }),
+  );
+  return resolved;
+}
+
 async function extractEvidenceBatches(
   config: NanoGptConfig,
   mealText: string,
@@ -576,42 +618,52 @@ export async function parseMealWithResearch(
   let extractionMs: number | undefined;
   const resolved = new Map<string, ResolvedNutrition>();
 
-  if (researchItems.length && searchApiKey) {
+  if (researchItems.length) {
     onProgress?.('looking_up');
-    const searchStartedAt = nowMs();
-    research = await searchMealItems(researchItems, searchApiKey, {
-      maxItems: options?.maxSearches,
-    });
-    serperMs = Math.round(nowMs() - searchStartedAt);
-
-    for (const [itemId, value] of evidenceResolutions(
-      extractDirectEvidenceFacts(research),
-      researchItems,
-      research,
-    )) {
+    // 1. Nutrition database first — authoritative + fast for generic/unlabelled
+    //    foods (no LLM extraction). Branded products OFF lacks fall through.
+    for (const [itemId, value] of (await resolveFromNutritionDb(researchItems)).entries()) {
       resolved.set(itemId, value);
     }
 
-    const usableIds = new Set(
-      research
-        .filter((result) => result.status === 'ok' && result.snippets.length)
-        .map((result) => result.item_id),
-    );
-    const evidencedItems = researchItems.filter(
-      (item) => usableIds.has(item.item_id) && !resolved.has(item.item_id),
-    );
+    // 2. Web search (Serper) only for what the database couldn't resolve.
+    const searchItems = researchItems.filter((item) => !resolved.has(item.item_id));
+    if (searchItems.length && searchApiKey) {
+      const searchStartedAt = nowMs();
+      research = await searchMealItems(searchItems, searchApiKey, {
+        maxItems: options?.maxSearches,
+      });
+      serperMs = Math.round(nowMs() - searchStartedAt);
 
-    if (evidencedItems.length) {
-      const extractionStartedAt = nowMs();
-      for (const [itemId, value] of (await extractEvidenceBatches(
-        config,
-        mealText,
-        evidencedItems,
+      for (const [itemId, value] of evidenceResolutions(
+        extractDirectEvidenceFacts(research),
+        searchItems,
         research,
-      )).entries()) {
+      )) {
         resolved.set(itemId, value);
       }
-      extractionMs = Math.round(nowMs() - extractionStartedAt);
+
+      const usableIds = new Set(
+        research
+          .filter((result) => result.status === 'ok' && result.snippets.length)
+          .map((result) => result.item_id),
+      );
+      const evidencedItems = searchItems.filter(
+        (item) => usableIds.has(item.item_id) && !resolved.has(item.item_id),
+      );
+
+      if (evidencedItems.length) {
+        const extractionStartedAt = nowMs();
+        for (const [itemId, value] of (await extractEvidenceBatches(
+          config,
+          mealText,
+          evidencedItems,
+          research,
+        )).entries()) {
+          resolved.set(itemId, value);
+        }
+        extractionMs = Math.round(nowMs() - extractionStartedAt);
+      }
     }
   }
 
