@@ -8,7 +8,7 @@ import type { ParsedFoodItem, ParseMealResponse, ParseProgressState } from '../t
 import type { DayContext } from '../hooks/useDayContext';
 import { sumItemMacros } from '../utils/mealTotals';
 import { hapticLight, hapticSuccess } from '../utils/haptics';
-import { getReviewHint, getResearchTrustLine, getParseErrorTitle, getRejectionTitle, getTranscriptCorrectLabel, getTranscriptReparseConfirm, isLongParseTranscript } from '../copy/experience';
+import { getReviewHint, getResearchTrustLine, getParseErrorTitle, getRejectionTitle, getParseTimeoutMessage, getTranscriptCorrectLabel, getTranscriptReparseConfirm, isLongParseTranscript } from '../copy/experience';
 import type { ParseErrorKind, ParseRejectionCode } from '../utils/parseRejection.ts';
 import { useUserExperience } from '../context/userExperience';
 import { upsertSavedFoods } from '../utils/savedFoods';
@@ -69,11 +69,6 @@ function shouldAutoVerify(item: ParsedFoodItem): boolean {
     || item.evidence_status === 'user_saved';
 }
 
-function requiresManualReview(item: ParsedFoodItem): boolean {
-  if (item.evidence_status === 'unavailable') return true;
-  return item.calories === 0 && item.protein === 0 && item.carbs === 0 && item.fats === 0;
-}
-
 function userAdjustedProvenance(): Pick<ParsedFoodItem, 'from_saved_food' | 'evidence_status' | 'source_note' | 'source_title' | 'source_url'> {
   return {
     from_saved_food: false,
@@ -89,13 +84,13 @@ function parseNumber(value: string, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function provenanceLabel(item: ParsedFoodItem): string | null {
+/** Quiet provenance whisper shown under each item. */
+function provenanceWhisper(item: ParsedFoodItem): string {
+  if (item.from_saved_food || item.evidence_status === 'user_saved') return 'from your saved foods';
   switch (item.evidence_status) {
-    case 'uk_evidence': return item.source_title ? `UK evidence · ${item.source_title}` : 'UK evidence';
-    case 'user_saved': return 'Your saved food';
-    case 'ai_estimate': return 'AI estimate';
-    case 'unavailable': return 'Nutrition unavailable';
-    default: return null;
+    case 'uk_evidence': return 'UK-verified';
+    case 'unavailable': return 'couldn\'t verify';
+    default: return 'estimated';
   }
 }
 
@@ -142,20 +137,6 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
 
   const scrollToRow = (id: string) => {
     document.getElementById(`meal-review-row-${id}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  };
-
-  const pulseRow = (id: string) => {
-    const row = document.getElementById(`meal-review-row-${id}`);
-    if (!row) return;
-    row.classList.add('meal-review-row--pulse');
-    window.setTimeout(() => row.classList.remove('meal-review-row--pulse'), 650);
-  };
-
-  const scrollToFirstUnverified = () => {
-    const first = items.find((item) => !verified.has(item.id));
-    if (!first) return;
-    scrollToRow(first.id);
-    pulseRow(first.id);
   };
 
   useEffect(() => {
@@ -379,6 +360,15 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
       if (target.closest('button, input, textarea, a, [role="menu"]')) return;
     }
     if (editingId === itemId) return;
+
+    if (verified.has(itemId)) {
+      // Tap a confirmed item again to expand serving/quantity correction.
+      setToolsExpandedId((current) => (current === itemId ? null : itemId));
+      setServingEditId((current) => (current === itemId ? null : current));
+      setOpenMenuId(null);
+      return;
+    }
+
     toggleVerified(itemId);
   };
 
@@ -388,18 +378,6 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
-      return next;
-    });
-  };
-
-  const verifyAllRemaining = () => {
-    hapticSuccess();
-    setUserTouched(true);
-    setVerified((prev) => {
-      const next = new Set(prev);
-      items.forEach((item) => {
-        if (!requiresManualReview(item)) next.add(item.id);
-      });
       return next;
     });
   };
@@ -476,6 +454,8 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
     ? 'sheet-compact-tall'
     : 'sheet-compact';
   const isRejection = parseErrorKind === 'rejection';
+  const isTimeoutFailure = !isRejection && Boolean(parseError) && /timed out|timeout|took too long/i.test(parseError ?? '');
+  const displayedParseError = isTimeoutFailure ? getParseTimeoutMessage() : parseError;
   const errorTranscript = (retryDraft.trim() || transcript?.trim() || '');
   const canCorrectErrorTranscript = Boolean(onRetry) && Boolean(errorTranscript) && (
     !isRejection || parseRejectionReason === 'no_meal_detected'
@@ -539,41 +519,34 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
     )
   ) : (
     <div className="meal-review-footer">
-      {!allVerified && items.length > 0 && (
+      {items.length > 0 && (
         <div className="meal-review-footer__summary" aria-live="polite">
           <span className="meal-review-footer__total tabular-nums">{Math.round(totals.calories)} cal</span>
           <span className="meal-review-footer__meta">
-            {unverifiedCount > 0
-              ? `${unverifiedCount} to confirm`
-              : 'Ready to log'}
+            {allVerified
+              ? 'Ready to log'
+              : `${items.length - unverifiedCount} of ${items.length} confirmed`}
           </span>
         </div>
       )}
       <div className="meal-review-footer__actions">
-        {!allVerified && unverifiedCount > 1 && (
-          <button
-            type="button"
-            onClick={verifyAllRemaining}
-            className="meal-review-footer__verify-all"
-          >
-            Verify all
-          </button>
-        )}
         <div className="flex gap-3">
           <button type="button" onClick={handleDismiss} className="flex-1 btn-ghost py-3">
             Cancel
           </button>
           <button
             type="button"
-            onClick={allVerified ? handleLogAll : scrollToFirstUnverified}
-            disabled={logging || items.length === 0}
+            onClick={handleLogAll}
+            disabled={logging || items.length === 0 || !allVerified}
             className="flex-1 btn-primary"
           >
             {logging
               ? 'Saving…'
-              : !allVerified
-                ? `Verify ${unverifiedCount} item${unverifiedCount === 1 ? '' : 's'}`
-                : `Log ${items.length} item${items.length === 1 ? '' : 's'}`}
+              : items.length === 0
+                ? 'Nothing to log'
+                : !allVerified
+                  ? 'Confirm each item to save'
+                  : `Log ${items.length} item${items.length === 1 ? '' : 's'}`}
           </button>
         </div>
       </div>
@@ -680,11 +653,15 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
                 const isUncertain = !isVerified && item.confidence === 'low';
                 const referenceAmount = extractReferenceAmount(item);
                 const servingLabel = formatServingLabel(item);
-                const provenance = provenanceLabel(item);
-                const canAdjustWeight = !isVerified && !isEditing && !item.from_saved_food && Boolean(referenceAmount);
+                const whisper = provenanceWhisper(item);
+                const canAdjust = !item.from_saved_food && Boolean(referenceAmount);
+                const isVague = !canAdjust
+                  || item.confidence === 'medium'
+                  || item.confidence === 'low'
+                  || Boolean(item.portion_assumption);
                 const isServingEditOpen = servingEditId === item.id;
                 const toolsExpanded = toolsExpandedId === item.id || isEditing || isServingEditOpen;
-                const showServing = !isVerified && !isEditing && Boolean(
+                const showServing = !isEditing && Boolean(
                   servingLabel || referenceAmount || item.confidence === 'medium' || item.confidence === 'low',
                 );
 
@@ -693,7 +670,7 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
                     key={item.id}
                     id={`meal-review-row-${item.id}`}
                     className={`meal-review-row meal-review-row--reveal ${isVerified ? 'meal-review-row--verified' : 'meal-review-row--pending'}${isUncertain ? ' meal-review-row--uncertain' : ''}${toolsExpanded ? ' meal-review-row--expanded' : ''}`}
-                    style={{ animationDelay: `${Math.min(index, 8) * 40}ms` }}
+                    style={{ animationDelay: `${Math.min(index, 5) * 110}ms` }}
                   >
                     <div
                       className={`meal-review-row__main ${!isEditing ? 'meal-review-row__main--tappable' : ''}`}
@@ -705,16 +682,16 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
                           handleRowMainActivate(item.id, event);
                         }
                       }}
-                      aria-label={!isVerified ? `Verify ${item.food_name}` : undefined}
+                      aria-label={!isVerified ? `Verify ${item.food_name}` : `Adjust ${item.food_name}`}
                     >
                       <div className="meal-review-row__info">
                         <div className="meal-review-row__title">
                           <p className="meal-review-row__name capitalize">{item.food_name}</p>
                           {showServing && (
-                            canAdjustWeight ? (
+                            canAdjust ? (
                               <button
                                 type="button"
-                                className={`meal-review-row__serving meal-review-row__serving--button ${isServingEditOpen ? 'meal-review-row__serving--open' : ''}`}
+                                className={`meal-review-row__serving meal-review-row__serving--button ${isVague ? 'meal-review-row__serving--vague' : ''} ${isServingEditOpen ? 'meal-review-row__serving--open' : ''}`}
                                 onClick={() => {
                                   if (isServingEditOpen) {
                                     setServingEditId(null);
@@ -724,11 +701,13 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
                                 }}
                                 aria-expanded={isServingEditOpen}
                               >
-                                {servingLabel ?? `${referenceAmount?.value}${referenceAmount?.unit}`}
+                                {isVague
+                                  ? `~${referenceAmount?.value}${referenceAmount?.unit} — tap to adjust`
+                                  : (servingLabel ?? `${referenceAmount?.value}${referenceAmount?.unit}`)}
                               </button>
                             ) : (
                               <span className="meal-review-row__serving meal-review-row__serving--vague">
-                                {servingLabel ?? 'Estimated portion'}
+                                {servingLabel ?? 'estimated portion'}
                               </span>
                             )
                           )}
@@ -795,23 +774,20 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
                             )}
                           </div>
                         )}
-                        {item.from_saved_food && !isEditing && (
-                          <span className="meal-review-row__saved-badge">From your saved foods</span>
-                        )}
-                        {!isEditing && provenance && !item.from_saved_food && (
+                        {!isEditing && (
                           <div className="meal-review-row__provenance">
                             {item.source_url ? (
                               <a
                                 href={item.source_url}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="meal-review-row__source"
+                                className="meal-review-row__source meal-review-row__whisper"
                                 onClick={(event) => event.stopPropagation()}
                               >
-                                {provenance}
+                                {whisper}
                               </a>
                             ) : (
-                              <span className="meal-review-row__source">{provenance}</span>
+                              <span className="meal-review-row__source meal-review-row__whisper">{whisper}</span>
                             )}
                             <MacroLine
                               protein={item.protein * qty}
@@ -819,13 +795,6 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
                               fats={item.fats * qty}
                             />
                           </div>
-                        )}
-                        {(!provenance || item.from_saved_food) && !isEditing && (
-                          <MacroLine
-                            protein={item.protein * qty}
-                            carbs={item.carbs * qty}
-                            fats={item.fats * qty}
-                          />
                         )}
                       </div>
                       <span className="meal-review-row__calories tabular-nums">{itemCalories} cal</span>
@@ -934,7 +903,7 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
                       )}
                     </div>
 
-                    {toolsExpanded && !isVerified && (
+                    {toolsExpanded && (
                       <div className="meal-review-row__actions">
                         <div className="meal-review-stepper">
                           <button
@@ -1036,7 +1005,7 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
       {!loadingVisible && showParseError && (
         <div className="meal-review-retry">
           <p className={`meal-review-retry__error${isRejection ? ' meal-review-retry__error--calm' : ''}`}>
-            {parseError}
+            {displayedParseError}
           </p>
           {canCorrectErrorTranscript ? (
             <TranscriptCorrectBlock

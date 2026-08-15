@@ -1,6 +1,6 @@
 import type { ExperienceContext } from '../types/experience';
 import type { ParseProgressStage } from '../types/mealParse';
-import { mealPeriodPrompt, timeOfDayLabel } from '../utils/experience';
+import { timeOfDayLabel } from '../utils/experience';
 
 function withName(prefix: string, ctx: ExperienceContext): string {
   return ctx.firstName ? `${prefix}, ${ctx.firstName}` : prefix;
@@ -52,7 +52,7 @@ export function getTodaySubline(ctx: ExperienceContext): string | null {
 }
 
 export function getLogTitle(ctx: ExperienceContext): string {
-  const base = mealPeriodPrompt(ctx.mealPeriod);
+  const base = 'What did you eat?';
   if (!ctx.firstName) return base;
   return base.replace(/\?$/, `, ${ctx.firstName}?`);
 }
@@ -194,19 +194,21 @@ export function getParseStageLabel(
   mode: 'voice' | 'text',
   firstName?: string | null,
 ): string {
-  const named = firstName ? `, ${firstName}` : '';
-
   switch (stage) {
     case 'transcribing':
-      return mode === 'voice' ? `One moment${named}` : `Reading that${named}`;
+      return 'Transcribing...';
     case 'identifying':
-      return 'Finding the foods';
+      return 'Identifying...';
     case 'looking_up':
-      return 'Checking UK sources';
+      return 'Looking up...';
     case 'estimating':
-      return 'Adding it up';
+      return 'Estimating...';
     default:
-      return mode === 'text' ? `Reading that${named}` : `One moment${named}`;
+      return mode === 'text'
+        ? 'Working out the numbers'
+        : firstName
+          ? `Working out the numbers, ${firstName}`
+          : 'Working out the numbers';
   }
 }
 
@@ -215,13 +217,14 @@ export function getParseStageSublabel(
   stage: ParseProgressStage | null,
   hasTranscript = false,
 ): string {
-  if (hasTranscript) return 'Still working — edit or retake anytime';
-  if (stage === 'looking_up') return 'Still checking — a few more seconds';
-  return 'Hang tight';
+  if (hasTranscript) return 'Working out the numbers';
+  if (stage === 'looking_up') return 'Checking UK sources';
+  if (stage === 'estimating') return 'Got it — one moment';
+  return 'Working out the numbers';
 }
 
 export function getResearchTrustLine(): string {
-  return 'UK evidence used where available';
+  return 'Checked against UK sources';
 }
 
 export function getVoiceLongRecordingHint(): string {
@@ -307,15 +310,20 @@ export function getGoalsSaveFailureMessage(): string {
 }
 
 export function getNoSpeechMessage(): string {
-  return 'We didn\'t catch that. Tap the mic and say what you ate.';
+  return 'Didn\'t catch that — try again';
 }
 
 export function getNoMealDetectedMessage(): string {
-  return 'That didn\'t sound like a meal. Try something like "two eggs and toast", or type it below.';
+  return 'That doesn\'t sound like a meal — try again?';
 }
 
 export function getNothingEatenMessage(): string {
-  return 'Nothing to log this time. Come back after your next meal.';
+  return 'Got it — nothing to log';
+}
+
+/** Shown when the parse takes too long and the attempt is abandoned. */
+export function getParseTimeoutMessage(): string {
+  return 'Took too long — try again';
 }
 
 export function getRejectionTitle(): string {

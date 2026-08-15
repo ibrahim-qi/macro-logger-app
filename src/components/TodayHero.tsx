@@ -29,8 +29,6 @@ const TodayHero: React.FC<TodayHeroProps> = ({ dailyTotals, userGoals, streak, o
 
   return (
     <section className="today-summary">
-      <div className="today-summary__canopy" aria-hidden="true" />
-
       {userGoals ? (
         <DayMetrics dailyTotals={dailyTotals} userGoals={userGoals} variant="today" />
       ) : (

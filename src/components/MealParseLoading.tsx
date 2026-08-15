@@ -148,15 +148,6 @@ const MealParseLoading: React.FC<MealParseLoadingProps> = ({
     ? getParseStageSublabel(labelStage, hasTranscript)
     : null;
 
-  const visibleStages = mode === 'text' ? STAGE_ORDER.slice(1) : STAGE_ORDER;
-  const stageIndex = labelStage ? visibleStages.indexOf(labelStage) : -1;
-  // Quiet determinate fill — never looks finished until the sheet exits to review.
-  const progressFill = exiting
-    ? 1
-    : stageIndex < 0
-      ? 0.1
-      : Math.min(0.94, (stageIndex + 1) / visibleStages.length);
-
   return (
     <div
       className={[
@@ -190,22 +181,6 @@ const MealParseLoading: React.FC<MealParseLoadingProps> = ({
 
       {!editing && (
         <>
-          <div
-            className="parse-wait__progress"
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={Math.round(progressFill * 100)}
-            aria-label="Meal analysis progress"
-          >
-            <div className="parse-wait__progress-track">
-              <div
-                className="parse-wait__progress-fill"
-                style={{ transform: `scaleX(${progressFill})` }}
-              />
-            </div>
-          </div>
-
           <p key={label} className="parse-wait__stage-label">{label}</p>
           {sublabel && (
             <p className="parse-wait__stage-sublabel">{sublabel}</p>
