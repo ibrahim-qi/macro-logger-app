@@ -1,7 +1,8 @@
 /** Authoritative nutrition-database lookup (Open Food Facts) for generic and
  *  unlabelled foods. Faster and more reliable than web search for foods that
- *  don't need a brand-specific label. Anything OFF misses falls back to Serper
- *  in the caller. */
+ *  don't need a brand-specific label — but only when the name is a CLOSE match,
+ *  so a fuzzy hit can never silently return the wrong food's macros. Anything
+ *  OFF misses (or can't confidently match) falls back to Serper in the caller. */
 
 export interface NutritionDbHit {
   food_name: string;
@@ -14,6 +15,7 @@ export interface NutritionDbHit {
 
 const OFF_BASE = 'https://uk.openfoodfacts.org';
 const OFF_TIMEOUT_MS = 6_000;
+const OFF_PAGE_SIZE = 10;
 const CACHE_TTL_MS = 15 * 60 * 1000;
 const CACHE_MAX_ENTRIES = 120;
 
@@ -46,6 +48,62 @@ function positiveOrNull(value: unknown): number | null {
   return Number.isFinite(number) && number > 0 ? number : null;
 }
 
+function tokenize(value: string): string[] {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+/** Common descriptors that may legitimately appear in a generic food's name. */
+const GENERIC_DESCRIPTORS = new Set([
+  'raw', 'cooked', 'white', 'brown', 'boiled', 'dry', 'fresh', 'whole', 'plain',
+  'sliced', 'chopped', 'diced', 'long', 'short', 'grain', 'basmati', 'jasmine',
+  'milled', 'powder', 'ground', 'lean', 'frozen', 'tinned', 'canned', 'generic',
+]);
+
+/**
+ * A hit is trusted only when every requested token appears in the product name
+ * and the product name carries no more than one unexplained extra token.
+ * This rejects fuzzy matches like "white rice" -> "white bread with rice topping".
+ */
+function closeNameMatch(foodName: string, productName: string): boolean {
+  const foodTokens = tokenize(foodName);
+  const productTokens = tokenize(productName);
+  if (!foodTokens.length || !productTokens.length) return false;
+  if (!foodTokens.every((token) => productTokens.includes(token))) return false;
+  const unexplained = productTokens.filter(
+    (token) => !foodTokens.includes(token) && !GENERIC_DESCRIPTORS.has(token),
+  );
+  return unexplained.length <= 1;
+}
+
+interface OffProduct {
+  product_name?: string;
+  code?: string;
+  brands?: string;
+  generic_name?: string;
+  nutriments?: Record<string, unknown>;
+}
+
+function toHit(foodName: string, product: OffProduct): NutritionDbHit | null {
+  const nutriments = product.nutriments ?? {};
+  const calories = positiveOrNull(nutriments['energy-kcal_100g']);
+  if (calories == null) return null;
+  return {
+    food_name: String(product.product_name ?? foodName),
+    calories,
+    protein: positiveOrNull(nutriments['proteins_100g']),
+    carbs: positiveOrNull(nutriments['carbohydrates_100g']),
+    fats: positiveOrNull(nutriments['fat_100g']),
+    source_url: product.code
+      ? `${OFF_BASE}/product/${product.code}`
+      : `${OFF_BASE}/cgi/search.pl?search_terms=${encodeURIComponent(foodName)}`,
+  };
+}
+
 export async function lookupNutritionDb(foodName: string): Promise<NutritionDbHit | null> {
   const key = cacheKey(foodName);
   const cached = getCached(key);
@@ -54,7 +112,7 @@ export async function lookupNutritionDb(foodName: string): Promise<NutritionDbHi
   try {
     const url =
       `${OFF_BASE}/cgi/search.pl?search_terms=${encodeURIComponent(foodName)}` +
-      `&json=1&page_size=1&fields=product_name,code,nutriments`;
+      `&json=1&page_size=${OFF_PAGE_SIZE}&fields=product_name,code,brands,generic_name,nutriments`;
     const response = await fetch(url, {
       headers: { 'User-Agent': 'Soha macro logger / 1.0' },
       signal: AbortSignal.timeout(OFF_TIMEOUT_MS),
@@ -62,23 +120,19 @@ export async function lookupNutritionDb(foodName: string): Promise<NutritionDbHi
     if (!response.ok) throw new Error(`OFF ${response.status}`);
 
     const payload = await response.json();
-    const product = payload?.products?.[0];
-    const nutriments = product?.nutriments ?? {};
-    const hit: NutritionDbHit = {
-      food_name: String(product?.product_name ?? foodName),
-      calories: positiveOrNull(nutriments['energy-kcal_100g']),
-      protein: positiveOrNull(nutriments['proteins_100g']),
-      carbs: positiveOrNull(nutriments['carbohydrates_100g']),
-      fats: positiveOrNull(nutriments['fat_100g']),
-      source_url: product?.code
-        ? `${OFF_BASE}/product/${product.code}`
-        : `${OFF_BASE}/cgi/search.pl?search_terms=${encodeURIComponent(foodName)}`,
-    };
+    const products: OffProduct[] = Array.isArray(payload?.products) ? payload.products : [];
 
-    if (hit.calories == null) {
-      setCached(key, null);
-      return null;
-    }
+    // Prefer a close name match; unbranded / generic products rank first.
+    const matches = products.filter((product) =>
+      closeNameMatch(foodName, String(product.product_name ?? '')),
+    );
+    matches.sort((a, b) => {
+      const aGeneric = !a.brands && Boolean(a.generic_name) ? 0 : 1;
+      const bGeneric = !b.brands && Boolean(b.generic_name) ? 0 : 1;
+      return aGeneric - bGeneric;
+    });
+
+    const hit = matches.length ? toHit(foodName, matches[0]) : null;
     setCached(key, hit);
     return hit;
   } catch (error) {
