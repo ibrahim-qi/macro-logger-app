@@ -257,11 +257,12 @@ async function selfCheckInterpretation(
   config: NanoGptConfig,
   mealText: string,
   interpretation: MealInterpretation,
+  model: string,
 ): Promise<MealInterpretation> {
   try {
     const raw = await callNanoGptJson<MealInterpretation>(
       config,
-      config.interpretationModel ?? config.model,
+      model,
       INTERPRETATION_SELF_CHECK_SYSTEM_PROMPT,
       buildSelfCheckUserMessage(mealText, interpretation.items),
       'meal_interpretation_refined',
@@ -512,23 +513,44 @@ export async function parseMealWithResearch(
 
   onProgress?.('identifying');
   const interpretationStartedAt = nowMs();
-  const rawInterpretation = await callNanoGptJson<MealInterpretation>(
-    config,
-    config.interpretationModel ?? config.model,
-    buildInterpretationSystemPrompt(context),
-    mealText,
-    'meal_interpretation',
-    MEAL_INTERPRETATION_SCHEMA as unknown as Record<string, unknown>,
-    INTERPRETATION_MAX_TOKENS,
-    'high',
-  );
+  const interpretationModel = config.interpretationModel ?? config.model;
+  let effectiveModel = interpretationModel;
+  let rawInterpretation: MealInterpretation;
+  try {
+    rawInterpretation = await callNanoGptJson<MealInterpretation>(
+      config,
+      interpretationModel,
+      buildInterpretationSystemPrompt(context),
+      mealText,
+      'meal_interpretation',
+      MEAL_INTERPRETATION_SCHEMA as unknown as Record<string, unknown>,
+      INTERPRETATION_MAX_TOKENS,
+      'high',
+    );
+  } catch (error) {
+    // If the reasoning model is unavailable (bad id / unsupported schema),
+    // fall back to the parse model rather than failing every parse.
+    if (interpretationModel === config.model) throw error;
+    console.warn('[parse] interpretation model failed; falling back to parse model', error);
+    effectiveModel = config.model;
+    rawInterpretation = await callNanoGptJson<MealInterpretation>(
+      config,
+      config.model,
+      buildInterpretationSystemPrompt(context),
+      mealText,
+      'meal_interpretation',
+      MEAL_INTERPRETATION_SCHEMA as unknown as Record<string, unknown>,
+      INTERPRETATION_MAX_TOKENS,
+      'high',
+    );
+  }
   const firstPass = sanifyInterpretationPortions(
     normalizeInterpretation(rawInterpretation),
     mealText,
   );
   rejectInterpretation(firstPass, mealText);
   const interpretation = sanifyInterpretationPortions(
-    await selfCheckInterpretation(config, mealText, firstPass),
+    await selfCheckInterpretation(config, mealText, firstPass, effectiveModel),
     mealText,
   );
   rejectInterpretation(interpretation, mealText);

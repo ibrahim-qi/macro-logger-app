@@ -28,7 +28,7 @@ export async function parseMealTextRaw(text: string, config: ParseConfig) {
       apiKey: config.apiKey,
       baseUrl: config.baseUrl ?? 'https://nano-gpt.com/api/v1',
       model: config.model,
-      interpretationModel: config.interpretationModel ?? process.env.NANOGPT_INTERPRETATION_MODEL ?? undefined,
+      interpretationModel: config.interpretationModel ?? process.env.NANOGPT_INTERPRETATION_MODEL ?? 'openai/gpt-5.6-terra',
       extractionModel:
         config.extractionModel ??
         process.env.NANOGPT_EXTRACTION_MODEL ??
