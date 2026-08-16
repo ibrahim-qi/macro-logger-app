@@ -5,9 +5,9 @@ export interface ParsedFoodItem {
   food_name: string;
   preparation?: string;
   calories: number;
-  protein: number;
-  carbs: number;
-  fats: number;
+  protein: number | null;
+  carbs: number | null;
+  fats: number | null;
   quantity: number;
   unit?: 'count' | 'serving';
   confidence?: ParseConfidence;
@@ -22,7 +22,7 @@ export interface ParsedFoodItem {
   source_title?: string;
   source_url?: string;
   evidence_quote?: string;
-  evidence_status?: 'uk_evidence' | 'ai_estimate' | 'user_saved' | 'unavailable';
+  evidence_status?: 'uk_evidence' | 'ai_estimate' | 'user_saved' | 'unavailable' | 'related_match';
   /** True when macros were filled from the user's saved foods list */
   from_saved_food?: boolean;
   macro_validation?: {

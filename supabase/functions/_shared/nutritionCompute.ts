@@ -7,9 +7,9 @@ import type { ItemSearchResult, SearchSnippet } from './webSearch.ts';
 
 export interface ComputedNutrition {
   calories: number;
-  protein: number;
-  carbs: number;
-  fats: number;
+  protein: number | null;
+  carbs: number | null;
+  fats: number | null;
   factor: number;
 }
 
@@ -22,12 +22,11 @@ function finiteNonNegative(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
+/** True when a fact has a usable calorie value and basis. Macros may be null
+ *  (kcal-only sources) — accepted and surfaced as unknown rather than rejected. */
 export function hasCompleteNutrition(fact: NutritionFactBase): boolean {
   return (
     finiteNonNegative(fact.calories) &&
-    finiteNonNegative(fact.protein) &&
-    finiteNonNegative(fact.carbs) &&
-    finiteNonNegative(fact.fats) &&
     finiteNonNegative(fact.basis_amount) &&
     fact.basis_amount > 0
   );
@@ -104,18 +103,16 @@ export function extractDirectEvidenceFacts(
       const protein = labelledGrams(snippet.snippet, 'protein');
       const carbs = labelledGrams(snippet.snippet, 'carbohydrates?|carbs?');
       const fats = labelledGrams(snippet.snippet, '(?:total\\s+)?fat');
-      if (!calorieMatch || protein === null || carbs === null || fats === null) continue;
+      if (!calorieMatch || !finiteNonNegative(Number(calorieMatch[1]))) continue;
 
-      const values = [Number(calorieMatch[1]), protein, carbs, fats];
-      if (!values.every(finiteNonNegative)) continue;
       facts.push({
         item_id: result.item_id,
         basis: basisMatch[1].toLowerCase() === 'ml' ? 'per_100ml' : 'per_100g',
         basis_amount: 100,
-        calories: values[0],
-        protein: values[1],
-        carbs: values[2],
-        fats: values[3],
+        calories: Number(calorieMatch[1]),
+        protein,
+        carbs,
+        fats,
         serving_weight_g: null,
         serving_volume_ml: null,
         confidence: 'high',
@@ -152,7 +149,8 @@ export function validateEvidenceFact(
     return { valid: false, reason: 'Evidence quote was not verbatim source text' };
   }
 
-  const values = [fact.calories, fact.protein, fact.carbs, fact.fats] as number[];
+  const values = [fact.calories, fact.protein, fact.carbs, fact.fats]
+    .filter((value): value is number => value != null);
   if (!values.every((value) => quoteContainsNumber(fact.evidence_quote, value))) {
     return { valid: false, reason: 'Evidence quote did not support every nutrition value' };
   }
@@ -164,11 +162,15 @@ function scaleFactor(item: InterpretedMealItem, fact: NutritionFactBase): number
   if (!Number.isFinite(fact.basis_amount) || fact.basis_amount <= 0) return null;
 
   switch (fact.basis) {
-    case 'per_100g':
-      return (item.reference_weight_g ?? fact.serving_weight_g) &&
-        (item.reference_weight_g ?? fact.serving_weight_g)! > 0
-        ? (item.reference_weight_g ?? fact.serving_weight_g)! / fact.basis_amount
-        : null;
+    case 'per_100g': {
+      const mass = item.reference_weight_g ?? fact.serving_weight_g;
+      if (mass && mass > 0) return mass / fact.basis_amount;
+      // Volume-only items (drinks) resolved to per-100g evidence: approximate
+      // ~1g/ml so the related-food fallback never leaves a drink unavailable.
+      const volume = item.reference_volume_ml ?? fact.serving_volume_ml;
+      if (volume && volume > 0) return volume / fact.basis_amount;
+      return null;
+    }
     case 'per_100ml':
       return (item.reference_volume_ml ?? fact.serving_volume_ml) &&
         (item.reference_volume_ml ?? fact.serving_volume_ml)! > 0
@@ -213,9 +215,9 @@ export function computeNutrition(
 
   return {
     calories: Math.round((fact.calories as number) * factor),
-    protein: roundMacro((fact.protein as number) * factor),
-    carbs: roundMacro((fact.carbs as number) * factor),
-    fats: roundMacro((fact.fats as number) * factor),
+    protein: fact.protein != null ? roundMacro((fact.protein as number) * factor) : null,
+    carbs: fact.carbs != null ? roundMacro((fact.carbs as number) * factor) : null,
+    fats: fact.fats != null ? roundMacro((fact.fats as number) * factor) : null,
     factor,
   };
 }
@@ -226,12 +228,16 @@ export function computeNutrition(
  */
 export function validateMacroConsistency(values: {
   calories: number;
-  protein: number;
-  carbs: number;
-  fats: number;
+  protein: number | null;
+  carbs: number | null;
+  fats: number | null;
 }): MacroValidation {
   if (!Number.isFinite(values.calories) || values.calories <= 0) {
     return { status: 'review', atwater_error_pct: null };
+  }
+  // Kcal-only source: macros unknown, so there is no Atwater check to run.
+  if (values.protein == null || values.carbs == null || values.fats == null) {
+    return { status: 'ok', atwater_error_pct: null };
   }
   const computed = values.protein * 4 + values.carbs * 4 + values.fats * 9;
   const error = Math.abs(computed - values.calories) / values.calories;

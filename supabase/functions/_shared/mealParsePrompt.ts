@@ -266,12 +266,14 @@ RULES
 - Prefer an official UK product label, then a UK government or reputable UK nutrition source.
 - basis describes the source values: per_100g, per_100ml, per_item, or per_serving.
 - basis_amount is the exact source basis amount. It is not the user's inferred portion.
+- When the source states nutrition as a per-serving or whole-portion total (e.g. "729 kcal per serving", "kcal per portion", "per dish") and gives no per-100g weight, use basis "per_serving" with basis_amount 1 and copy the source's stated values directly. Prefer this over per-100g: a source-stated serving total must NEVER be re-derived from the user's inferred portion weight.
+- When the source gives only per-100g (or per-100ml) values, use basis "per_100g"/"per_100ml" with basis_amount 100. Do not convert a per-serving total into a per-100g figure unless the source also states the serving weight.
 - Copy calories, protein, carbs, and fats from one internally consistent source. Return null for a missing nutrient; never invent it or combine incompatible sources.
 - serving_weight_g or serving_volume_ml is populated only when the same source explicitly states that serving amount.
 - evidence_quote must be a short VERBATIM substring of the supplied evidence containing the supporting nutrition values.
 - source_title and source_url must exactly match the supplied evidence.
 - If no result supports an item, omit that item from facts.
-- Do not scale values to the user's portion. Deterministic code performs all arithmetic.
+- Do not scale values to the user's portion. Deterministic code performs all arithmetic, and a per-serving total is used as-is (factor 1).
 
 Return only the schema.`;
 

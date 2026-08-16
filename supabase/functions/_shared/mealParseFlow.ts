@@ -284,7 +284,7 @@ async function selfCheckInterpretation(
 interface ResolvedNutrition {
   values: ComputedNutrition;
   fact: NutritionFactBase;
-  evidence_status: 'uk_evidence';
+  evidence_status: 'uk_evidence' | 'related_match';
   source_note: string;
   source_title?: string;
   source_url?: string;
@@ -388,9 +388,8 @@ async function proposeRelatedFoods(
     for (const replacement of raw.replacements ?? []) {
       const itemId = String(replacement.item_id ?? '').trim();
       const foodName = String(replacement.food_name ?? '').trim();
-      const searchQuery = String(replacement.search_query ?? '').trim();
-      if (itemId && foodName && searchQuery) {
-        replacements.set(itemId, { food_name: foodName, search_query: searchQuery });
+      if (itemId && foodName) {
+        replacements.set(itemId, { food_name: foodName, search_query: '' });
       }
     }
   } catch (error) {
@@ -412,6 +411,7 @@ function markAsRelated(
       ...value.fact,
       confidence: value.fact.confidence === 'high' ? 'medium' : value.fact.confidence,
     },
+    evidence_status: 'related_match',
     source_note: `Closest verified match: ${genericFoodName}`,
   };
 }

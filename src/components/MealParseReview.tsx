@@ -89,6 +89,7 @@ function provenanceWhisper(item: ParsedFoodItem): string {
   if (item.from_saved_food || item.evidence_status === 'user_saved') return 'from your saved foods';
   switch (item.evidence_status) {
     case 'uk_evidence': return 'UK-verified';
+    case 'related_match': return item.source_note || 'closest match';
     case 'unavailable': return 'couldn\'t verify';
     default: return 'estimated';
   }

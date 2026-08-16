@@ -12,9 +12,9 @@ export function sumItemMacros(items: ParsedFoodItem[]): MacroTotals {
     (acc, item) => {
       const q = item.quantity || 1;
       acc.calories += item.calories * q;
-      acc.protein += item.protein * q;
-      acc.carbs += item.carbs * q;
-      acc.fats += item.fats * q;
+      acc.protein += (item.protein ?? 0) * q;
+      acc.carbs += (item.carbs ?? 0) * q;
+      acc.fats += (item.fats ?? 0) * q;
       return acc;
     },
     { calories: 0, protein: 0, carbs: 0, fats: 0 },

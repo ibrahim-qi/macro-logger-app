@@ -1,15 +1,19 @@
 import React from 'react';
 
 interface MacroLineProps {
-  protein: number;
-  carbs: number;
-  fats: number;
+  protein: number | null;
+  carbs: number | null;
+  fats: number | null;
   className?: string;
+}
+
+function formatMacro(value: number | null, suffix: string): string {
+  return value != null ? `${Math.round(value)}${suffix}` : `—${suffix}`;
 }
 
 const MacroLine: React.FC<MacroLineProps> = ({ protein, carbs, fats, className = '' }) => (
   <span className={`meal-review-macro-line ${className}`.trim()}>
-    {Math.round(protein)}P · {Math.round(carbs)}C · {Math.round(fats)}F
+    {formatMacro(protein, 'P')} · {formatMacro(carbs, 'C')} · {formatMacro(fats, 'F')}
   </span>
 );
 

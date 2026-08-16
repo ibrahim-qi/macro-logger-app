@@ -1,13 +1,13 @@
-export type EvidenceStatus = 'uk_evidence' | 'ai_estimate' | 'user_saved' | 'unavailable';
+export type EvidenceStatus = 'uk_evidence' | 'ai_estimate' | 'user_saved' | 'unavailable' | 'related_match';
 
 export interface ParsedFoodItem {
   item_id?: string;
   food_name: string;
   preparation?: string;
   calories: number;
-  protein: number;
-  carbs: number;
-  fats: number;
+  protein: number | null;
+  carbs: number | null;
+  fats: number | null;
   quantity: number;
   unit?: 'count' | 'serving';
   confidence?: 'high' | 'medium' | 'low';
@@ -47,9 +47,9 @@ export function normalizeItems(items: ParsedFoodItem[]): ParsedFoodItem[] {
     food_name: String(item.food_name).trim(),
     preparation: item.preparation?.trim() || undefined,
     calories: nonNegative(item.calories),
-    protein: nonNegative(item.protein),
-    carbs: nonNegative(item.carbs),
-    fats: nonNegative(item.fats),
+    protein: item.protein != null ? nonNegative(item.protein) : null,
+    carbs: item.carbs != null ? nonNegative(item.carbs) : null,
+    fats: item.fats != null ? nonNegative(item.fats) : null,
     quantity: positive(item.quantity) ?? 1,
     unit: item.unit === 'count' ? 'count' : 'serving',
     portion_assumption: item.portion_assumption?.trim() || undefined,
