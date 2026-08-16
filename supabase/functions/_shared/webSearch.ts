@@ -146,7 +146,7 @@ function retryableStatus(status: number): boolean {
 }
 
 export async function searchWeb(query: string, apiKey: string, relaxed = false): Promise<SearchResult> {
-  const biasedQuery = ukBiasQuery(query);
+  const biasedQuery = relaxed ? query.trim() : ukBiasQuery(query);
   const cacheKey = relaxed ? `${biasedQuery}::relaxed` : biasedQuery;
   const cached = getCachedSearch(cacheKey);
   if (cached) return cached;
@@ -217,13 +217,14 @@ export function fallbackQuery(item: {
     : `${name} nutrition calories protein carbohydrate fat per 100g`;
 }
 
-function queryForItem(item: ItemSearchRequest): string {
+function queryForItem(item: ItemSearchRequest, relaxed = false): string {
   const modelQuery = item.search_query?.trim();
-  return ukBiasQuery(modelQuery || fallbackQuery(item));
+  const query = modelQuery || fallbackQuery(item);
+  return relaxed ? query.trim() : ukBiasQuery(query);
 }
 
 async function searchOne(item: ItemSearchRequest, apiKey: string, relaxed = false): Promise<ItemSearchResult> {
-  const query = queryForItem(item);
+  const query = queryForItem(item, relaxed);
   try {
     const result = await searchWeb(query, apiKey, relaxed);
     return {
