@@ -76,6 +76,8 @@ function getNanoGptConfig() {
       Deno.env.get('NANOGPT_EXTRACTION_MODEL') ??
       'google/gemini-3.5-flash-lite',
     fallbackModel: Deno.env.get('NANOGPT_FALLBACK_MODEL') || undefined,
+    fatSecretClientId: Deno.env.get('FATSECRET_CLIENT_ID') || undefined,
+    fatSecretClientSecret: Deno.env.get('FATSECRET_CLIENT_SECRET') || undefined,
   };
 }
 
@@ -171,6 +173,8 @@ async function parseMealText(
       interpretationModel: config.interpretationModel,
       extractionModel: config.extractionModel,
       fallbackModel: config.fallbackModel,
+      fatSecretClientId: config.fatSecretClientId,
+      fatSecretClientSecret: config.fatSecretClientSecret,
     },
     context,
     { onProgress },
