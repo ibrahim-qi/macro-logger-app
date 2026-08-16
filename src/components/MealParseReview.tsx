@@ -417,13 +417,16 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
       if (insertError) throw insertError;
 
       const foodsToRemember = items
-        .filter((item) => rememberIds.has(item.id))
+        .filter((item) =>
+          rememberIds.has(item.id)
+          && item.protein != null && item.carbs != null && item.fats != null,
+        )
         .map((item) => ({
           food_name: item.food_name,
           calories: item.calories,
-          protein: item.protein,
-          carbs: item.carbs,
-          fats: item.fats,
+          protein: item.protein!,
+          carbs: item.carbs!,
+          fats: item.fats!,
         }));
 
       if (foodsToRemember.length > 0) {
@@ -839,8 +842,8 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
                               type="number"
                               min={0}
                               step={0.1}
-                              value={item.protein}
-                              onChange={(e) => updateItem(item.id, { protein: parseNumber(e.target.value, item.protein) })}
+                              value={item.protein ?? ''}
+                              onChange={(e) => updateItem(item.id, { protein: parseNumber(e.target.value, item.protein ?? 0) })}
                               className="input-premium meal-review-edit__input"
                             />
                           </label>
@@ -850,8 +853,8 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
                               type="number"
                               min={0}
                               step={0.1}
-                              value={item.carbs}
-                              onChange={(e) => updateItem(item.id, { carbs: parseNumber(e.target.value, item.carbs) })}
+                              value={item.carbs ?? ''}
+                              onChange={(e) => updateItem(item.id, { carbs: parseNumber(e.target.value, item.carbs ?? 0) })}
                               className="input-premium meal-review-edit__input"
                             />
                           </label>
@@ -861,8 +864,8 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
                               type="number"
                               min={0}
                               step={0.1}
-                              value={item.fats}
-                              onChange={(e) => updateItem(item.id, { fats: parseNumber(e.target.value, item.fats) })}
+                              value={item.fats ?? ''}
+                              onChange={(e) => updateItem(item.id, { fats: parseNumber(e.target.value, item.fats ?? 0) })}
                               className="input-premium meal-review-edit__input"
                             />
                           </label>
