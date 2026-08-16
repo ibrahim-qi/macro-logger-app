@@ -33,6 +33,7 @@ import {
 } from './webSearch.ts';
 import { normalizeItems, type ParsedFoodItem } from './normalizeItems.ts';
 import { lookupNutritionDb } from './nutritionDb.ts';
+import { type FoodCache } from './nutritionCache.ts';
 
 export interface ParseMealFlowResult {
   items: ParsedFoodItem[];
@@ -67,6 +68,7 @@ interface ParseFlowOptions {
   searchApiKey?: string;
   maxSearches?: number;
   onProgress?: (stage: ParseProgressStage) => void;
+  cache?: FoodCache;
 }
 
 const INTERPRETATION_MAX_TOKENS = 3200;
@@ -325,6 +327,66 @@ function evidenceResolutions(
   return resolved;
 }
 
+async function resolveFromCache(
+  items: InterpretedMealItem[],
+  cache: FoodCache | undefined,
+): Promise<Map<string, ResolvedNutrition>> {
+  const resolved = new Map<string, ResolvedNutrition>();
+  if (!cache) return resolved;
+  for (const item of items) {
+    if (item.reference_weight_g == null) continue;
+    const hit = await cache.get(item.food_name);
+    if (!hit || hit.calories_100g == null) continue;
+    const isUser = hit.source === 'user';
+    const fact: NutritionEvidenceFact = {
+      item_id: item.item_id,
+      basis: 'per_100g',
+      basis_amount: 100,
+      calories: hit.calories_100g,
+      protein: hit.protein_100g,
+      carbs: hit.carbs_100g,
+      fats: hit.fat_100g,
+      serving_weight_g: null,
+      serving_volume_ml: null,
+      confidence: isUser ? 'high' : 'medium',
+      source_title: isUser ? 'Your correction' : 'Cached lookup',
+      source_url: hit.source_url,
+      evidence_quote: item.food_name,
+    };
+    const values = computeNutrition(item, fact);
+    if (!values) continue;
+    resolved.set(item.item_id, {
+      values,
+      fact,
+      evidence_status: isUser ? 'user_saved' : 'uk_evidence',
+      source_note: isUser ? 'Your correction' : 'Cached lookup',
+      source_title: isUser ? 'Your correction' : 'Cached lookup',
+      source_url: hit.source_url,
+      evidence_quote: item.food_name,
+    });
+  }
+  return resolved;
+}
+
+async function persistCache(
+  items: InterpretedMealItem[],
+  resolved: Map<string, ResolvedNutrition>,
+  cache: FoodCache,
+): Promise<void> {
+  for (const item of items) {
+    const r = resolved.get(item.item_id);
+    if (!r || r.fact.basis !== 'per_100g' || r.fact.calories == null) continue;
+    await cache.set(item.food_name, {
+      calories_100g: r.fact.calories,
+      protein_100g: r.fact.protein,
+      carbs_100g: r.fact.carbs,
+      fats_100g: r.fact.fats,
+      source: 'ai',
+      source_url: r.source_url ?? '',
+    });
+  }
+}
+
 async function resolveFromNutritionDb(
   items: InterpretedMealItem[],
   bestEffort = false,
@@ -578,12 +640,24 @@ export async function parseMealWithResearch(
     const saved = findSavedFoodMatch(item.food_name, context.savedFoods ?? [], mealText);
     if (saved) savedByItem.set(item.item_id, saved);
   }
-  const researchItems = interpretation.items.filter((item) => !savedByItem.has(item.item_id));
+
+  const resolved = new Map<string, ResolvedNutrition>();
+
+  // Persistent cache (learned foods) — checked before any fresh lookup.
+  for (const [itemId, value] of (await resolveFromCache(
+    interpretation.items.filter((item) => !savedByItem.has(item.item_id)),
+    options?.cache,
+  )).entries()) {
+    resolved.set(itemId, value);
+  }
+
+  const researchItems = interpretation.items.filter(
+    (item) => !savedByItem.has(item.item_id) && !resolved.has(item.item_id),
+  );
 
   let research: ItemSearchResult[] = [];
   let serperMs: number | undefined;
   let extractionMs: number | undefined;
-  const resolved = new Map<string, ResolvedNutrition>();
 
   if (researchItems.length) {
     onProgress?.('looking_up');
@@ -673,6 +747,11 @@ export async function parseMealWithResearch(
       : '',
   ].filter(Boolean).join(' ').trim() || undefined;
   const path = evidenceCount > 0 ? 'research' as const : 'fast' as const;
+
+  // Persist verified per-100g facts so the next identical food resolves instantly.
+  if (options?.cache) {
+    await persistCache(interpretation.items, resolved, options.cache);
+  }
 
   return attachTimings({
     items,

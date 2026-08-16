@@ -14,6 +14,7 @@ import {
   transcribeMealAudio,
   type SttTimings,
 } from '../_shared/stt/index.ts';
+import { createFoodCache, type FoodCache } from '../_shared/nutritionCache.ts';
 
 interface ParseMealResponse {
   items: ParsedFoodItem[];
@@ -159,6 +160,7 @@ async function parseMealText(
   config: NanoGptConfig,
   context: ParsePromptContext,
   onProgress?: (stage: 'identifying' | 'looking_up' | 'estimating') => void,
+  cache?: FoodCache,
 ): Promise<ParseMealResponse> {
   const trimmed = assertTranscriptLooksLikeFood(mealText, 3);
 
@@ -173,7 +175,7 @@ async function parseMealText(
       fallbackModel: config.fallbackModel,
     },
     context,
-    { onProgress },
+    { onProgress, cache },
   );
 
   return {
@@ -191,9 +193,10 @@ async function parseVoiceMeal(
   audio: VoiceAudioInput,
   config: NanoGptConfig,
   context: ParsePromptContext,
+  cache?: FoodCache,
 ): Promise<{ result: ParseMealResponse; transcript: string }> {
   const { transcript, timings } = await runStt(audio, config, context);
-  const result = await parseMealText(transcript, config, context);
+  const result = await parseMealText(transcript, config, context, undefined, cache);
   return {
     result: {
       ...result,
@@ -219,6 +222,7 @@ function streamParse(
   input: StreamParseInput,
   config: NanoGptConfig,
   contextPromise: Promise<ParsePromptContext>,
+  cache?: FoodCache,
 ): Response {
   const encoder = new TextEncoder();
 
@@ -257,6 +261,7 @@ function streamParse(
           config,
           context,
           (stage) => send({ event: 'progress', stage }),
+          cache,
         );
         send({
           event: 'result',
@@ -381,14 +386,15 @@ Deno.serve(async (req) => {
     const { useStream, mealText, audio } = await readRequestBody(req);
     // Kick off saved_foods fetch immediately; streaming voice must not await it first.
     const contextPromise = loadUserParseContext(supabase, user.id);
+    const cache = createFoodCache(supabase, user.id);
 
     if (audio) {
       if (useStream) {
-        return streamParse({ audio }, config, contextPromise);
+        return streamParse({ audio }, config, contextPromise, cache);
       }
 
       const context = await contextPromise;
-      const { result, transcript } = await parseVoiceMeal(audio, config, context);
+      const { result, transcript } = await parseVoiceMeal(audio, config, context, cache);
       return jsonResponse({ ...result, transcript });
     }
 
@@ -397,11 +403,11 @@ Deno.serve(async (req) => {
     }
 
     if (useStream) {
-      return streamParse({ text: mealText }, config, contextPromise);
+      return streamParse({ text: mealText }, config, contextPromise, cache);
     }
 
     const context = await contextPromise;
-    const result = await parseMealText(mealText, config, context);
+    const result = await parseMealText(mealText, config, context, undefined, cache);
     return jsonResponse(result);
   } catch (error) {
     if (error instanceof ParseRejectionError) {
