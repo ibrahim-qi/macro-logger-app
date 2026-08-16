@@ -12,7 +12,6 @@ import { getReviewHint, getResearchTrustLine, getParseErrorTitle, getRejectionTi
 import type { ParseErrorKind, ParseRejectionCode } from '../utils/parseRejection.ts';
 import { useUserExperience } from '../context/userExperience';
 import { upsertSavedFoods } from '../utils/savedFoods';
-import { captureCorrections } from '../utils/nutritionCache';
 import { localDayBounds, createTimestampForDate } from '../utils/localDate';
 import { useCountUp } from '../hooks/useCountUp';
 import {
@@ -426,21 +425,6 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
       if (foodsToRemember.length > 0) {
         await upsertSavedFoods(session.user.id, foodsToRemember);
       }
-
-      // Capture the confirmed per-100g macros as ground truth for future parses.
-      const corrections = [];
-      for (const item of items) {
-        const weight = item.reference_weight_g;
-        if (!weight || weight <= 0) continue;
-        corrections.push({
-          food_name: item.food_name,
-          calories_100g: Math.round((item.calories * 100 / weight) * 10) / 10,
-          protein_100g: Math.round((item.protein * 100 / weight) * 10) / 10,
-          carbs_100g: Math.round((item.carbs * 100 / weight) * 10) / 10,
-          fat_100g: Math.round((item.fats * 100 / weight) * 10) / 10,
-        });
-      }
-      await captureCorrections(session.user.id, corrections);
 
       hapticSuccess();
       const totalCalories = items.reduce(

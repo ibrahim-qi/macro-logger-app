@@ -32,8 +32,6 @@ import {
   type ItemSearchResult,
 } from './webSearch.ts';
 import { normalizeItems, type ParsedFoodItem } from './normalizeItems.ts';
-import { lookupNutritionDb } from './nutritionDb.ts';
-import { type FoodCache } from './nutritionCache.ts';
 
 export interface ParseMealFlowResult {
   items: ParsedFoodItem[];
@@ -68,7 +66,6 @@ interface ParseFlowOptions {
   searchApiKey?: string;
   maxSearches?: number;
   onProgress?: (stage: ParseProgressStage) => void;
-  cache?: FoodCache;
 }
 
 const INTERPRETATION_MAX_TOKENS = 3200;
@@ -284,7 +281,7 @@ async function selfCheckInterpretation(
 interface ResolvedNutrition {
   values: ComputedNutrition;
   fact: NutritionFactBase;
-  evidence_status: 'uk_evidence' | 'user_saved' | 'unavailable';
+  evidence_status: 'uk_evidence';
   source_note: string;
   source_title?: string;
   source_url?: string;
@@ -327,114 +324,6 @@ function evidenceResolutions(
   return resolved;
 }
 
-async function resolveFromCache(
-  items: InterpretedMealItem[],
-  cache: FoodCache | undefined,
-): Promise<Map<string, ResolvedNutrition>> {
-  const resolved = new Map<string, ResolvedNutrition>();
-  if (!cache) return resolved;
-  for (const item of items) {
-    if (item.reference_weight_g == null) continue;
-    const hit = await cache.get(item.food_name);
-    if (!hit || hit.calories_100g == null) continue;
-    const isUser = hit.source === 'user';
-    const fact: NutritionEvidenceFact = {
-      item_id: item.item_id,
-      basis: 'per_100g',
-      basis_amount: 100,
-      calories: hit.calories_100g,
-      protein: hit.protein_100g,
-      carbs: hit.carbs_100g,
-      fats: hit.fat_100g,
-      serving_weight_g: null,
-      serving_volume_ml: null,
-      confidence: isUser ? 'high' : 'medium',
-      source_title: isUser ? 'Your correction' : 'Cached lookup',
-      source_url: hit.source_url,
-      evidence_quote: item.food_name,
-    };
-    const values = computeNutrition(item, fact);
-    if (!values) continue;
-    resolved.set(item.item_id, {
-      values,
-      fact,
-      evidence_status: isUser ? 'user_saved' : 'uk_evidence',
-      source_note: isUser ? 'Your correction' : 'Cached lookup',
-      source_title: isUser ? 'Your correction' : 'Cached lookup',
-      source_url: hit.source_url,
-      evidence_quote: item.food_name,
-    });
-  }
-  return resolved;
-}
-
-async function persistCache(
-  items: InterpretedMealItem[],
-  resolved: Map<string, ResolvedNutrition>,
-  cache: FoodCache,
-): Promise<void> {
-  for (const item of items) {
-    const r = resolved.get(item.item_id);
-    if (!r || r.fact.basis !== 'per_100g' || r.fact.calories == null) continue;
-    // Never overwrite a user correction with a machine lookup — the user's value
-    // is ground truth and must win future lookups.
-    if (r.evidence_status === 'user_saved') continue;
-    await cache.set(item.food_name, {
-      calories_100g: r.fact.calories,
-      protein_100g: r.fact.protein,
-      carbs_100g: r.fact.carbs,
-      fats_100g: r.fact.fats,
-      source: 'ai',
-      source_url: r.source_url ?? '',
-    });
-  }
-}
-
-async function resolveFromNutritionDb(
-  items: InterpretedMealItem[],
-  bestEffort = false,
-): Promise<Map<string, ResolvedNutrition>> {
-  const resolved = new Map<string, ResolvedNutrition>();
-  // Solids only — drinks (volume, no weight) keep the per_100ml Serper path.
-  const resolvable = items.filter((item) => item.reference_weight_g != null);
-  // OFF rate-limits aggressively — process in small batches (3 concurrent max).
-  for (const batch of chunkArray(resolvable, 3)) {
-    await Promise.all(
-      batch.map(async (item) => {
-        const hit = await lookupNutritionDb(item.food_name, bestEffort);
-        if (!hit) return;
-        const fact: NutritionEvidenceFact = {
-          item_id: item.item_id,
-          basis: 'per_100g',
-          basis_amount: 100,
-          calories: hit.calories,
-          protein: hit.protein,
-          carbs: hit.carbs,
-          fats: hit.fats,
-          serving_weight_g: null,
-          serving_volume_ml: null,
-          confidence: bestEffort ? 'low' : 'high',
-          source_title: 'Open Food Facts',
-          source_url: hit.source_url,
-          evidence_quote: hit.food_name,
-        };
-        const values = computeNutrition(item, fact);
-        if (!values) return;
-        resolved.set(item.item_id, {
-          values,
-          fact,
-          evidence_status: 'uk_evidence',
-          source_note: hit.food_name,
-          source_title: 'Open Food Facts',
-          source_url: hit.source_url,
-          evidence_quote: hit.food_name,
-        });
-      }),
-    );
-  }
-  return resolved;
-}
-
 async function extractEvidenceBatches(
   config: NanoGptConfig,
   mealText: string,
@@ -472,58 +361,6 @@ async function extractEvidenceBatches(
     }
   }
 
-  return resolved;
-}
-
-async function relaxedEvidenceFallback(
-  config: NanoGptConfig,
-  mealText: string,
-  items: InterpretedMealItem[],
-  research: ItemSearchResult[],
-): Promise<Map<string, ResolvedNutrition>> {
-  const resolved = new Map<string, ResolvedNutrition>();
-  const researchById = new Map(research.map((result) => [result.item_id, result]));
-  const withSnippets = items.filter((item) => {
-    const result = researchById.get(item.item_id);
-    return Boolean(result && result.snippets.length);
-  });
-  if (!withSnippets.length) return resolved;
-
-  try {
-    const extracted = await callNanoGptJson<{ facts: NutritionEvidenceFact[] }>(
-      config,
-      config.extractionModel ?? config.model,
-      EVIDENCE_EXTRACTION_SYSTEM_PROMPT,
-      buildEvidenceUserMessage(
-        mealText,
-        withSnippets,
-        formatItemResearchForPrompt(
-          withSnippets.map((item) => researchById.get(item.item_id) as ItemSearchResult),
-        ),
-      ),
-      'nutrition_evidence_relaxed',
-      NUTRITION_EVIDENCE_SCHEMA as unknown as Record<string, unknown>,
-      EXTRACTION_MAX_TOKENS,
-    );
-    for (const fact of extracted.facts ?? []) {
-      if (resolved.has(fact.item_id)) continue;
-      const item = withSnippets.find((candidate) => candidate.item_id === fact.item_id);
-      if (!item) continue;
-      const values = computeNutrition(item, fact);
-      if (!values) continue;
-      resolved.set(fact.item_id, {
-        values,
-        fact: { ...fact, confidence: 'low' },
-        evidence_status: 'uk_evidence',
-        source_note: fact.source_title,
-        source_title: fact.source_title,
-        source_url: fact.source_url,
-        evidence_quote: fact.evidence_quote,
-      });
-    }
-  } catch (error) {
-    console.warn('[parse] relaxed evidence fallback failed', error);
-  }
   return resolved;
 }
 
@@ -646,90 +483,52 @@ export async function parseMealWithResearch(
 
   const resolved = new Map<string, ResolvedNutrition>();
 
-  // Persistent cache (learned foods) — checked before any fresh lookup.
-  for (const [itemId, value] of (await resolveFromCache(
-    interpretation.items.filter((item) => !savedByItem.has(item.item_id)),
-    options?.cache,
-  )).entries()) {
-    resolved.set(itemId, value);
-  }
-
   const researchItems = interpretation.items.filter(
-    (item) => !savedByItem.has(item.item_id) && !resolved.has(item.item_id),
+    (item) => !savedByItem.has(item.item_id),
   );
 
   let research: ItemSearchResult[] = [];
   let serperMs: number | undefined;
   let extractionMs: number | undefined;
 
-  if (researchItems.length) {
+  if (researchItems.length && searchApiKey) {
     onProgress?.('looking_up');
-    // 1. Nutrition database first — authoritative + fast for generic/unlabelled
-    //    foods (no LLM extraction). Branded products OFF lacks fall through.
-    for (const [itemId, value] of (await resolveFromNutritionDb(researchItems)).entries()) {
+    const searchStartedAt = nowMs();
+    research = await searchMealItems(researchItems, searchApiKey, {
+      maxItems: options?.maxSearches,
+    });
+    serperMs = Math.round(nowMs() - searchStartedAt);
+
+    // Direct facts from snippets (no LLM).
+    for (const [itemId, value] of evidenceResolutions(
+      extractDirectEvidenceFacts(research),
+      researchItems,
+      research,
+    )) {
       resolved.set(itemId, value);
     }
 
-    // 2. Web search (Serper) only for what the database couldn't resolve.
-    const searchItems = researchItems.filter((item) => !resolved.has(item.item_id));
-    if (searchItems.length && searchApiKey) {
-      const searchStartedAt = nowMs();
-      research = await searchMealItems(searchItems, searchApiKey, {
-        maxItems: options?.maxSearches,
-      });
-      serperMs = Math.round(nowMs() - searchStartedAt);
+    // LLM extraction for the rest — strict, only when the snippet supports it.
+    const usableIds = new Set(
+      research
+        .filter((result) => result.status === 'ok' && result.snippets.length)
+        .map((result) => result.item_id),
+    );
+    const evidencedItems = researchItems.filter(
+      (item) => usableIds.has(item.item_id) && !resolved.has(item.item_id),
+    );
 
-      for (const [itemId, value] of evidenceResolutions(
-        extractDirectEvidenceFacts(research),
-        searchItems,
+    if (evidencedItems.length) {
+      const extractionStartedAt = nowMs();
+      for (const [itemId, value] of (await extractEvidenceBatches(
+        config,
+        mealText,
+        evidencedItems,
         research,
-      )) {
+      )).entries()) {
         resolved.set(itemId, value);
       }
-
-      const usableIds = new Set(
-        research
-          .filter((result) => result.status === 'ok' && result.snippets.length)
-          .map((result) => result.item_id),
-      );
-      const evidencedItems = searchItems.filter(
-        (item) => usableIds.has(item.item_id) && !resolved.has(item.item_id),
-      );
-
-      if (evidencedItems.length) {
-        const extractionStartedAt = nowMs();
-        for (const [itemId, value] of (await extractEvidenceBatches(
-          config,
-          mealText,
-          evidencedItems,
-          research,
-        )).entries()) {
-          resolved.set(itemId, value);
-        }
-        extractionMs = Math.round(nowMs() - extractionStartedAt);
-      }
-    }
-  }
-
-  // Best-effort source fallback — no item is left "unavailable" without trying
-  // the closest Open Food Facts match (low confidence, still a real source).
-  const unresolvedItems = researchItems.filter((item) => !resolved.has(item.item_id));
-  for (const [itemId, value] of (await resolveFromNutritionDb(unresolvedItems, true)).entries()) {
-    resolved.set(itemId, value);
-  }
-
-  // Final relaxed fallback — extract low-confidence facts from any Serper
-  // snippet we already fetched, citing it as the source. An item is only ever
-  // "unavailable" when there is genuinely no source anywhere.
-  const stillUnresolved = researchItems.filter((item) => !resolved.has(item.item_id));
-  if (stillUnresolved.length && research.length) {
-    for (const [itemId, value] of (await relaxedEvidenceFallback(
-      config,
-      mealText,
-      stillUnresolved,
-      research,
-    )).entries()) {
-      resolved.set(itemId, value);
+      extractionMs = Math.round(nowMs() - extractionStartedAt);
     }
   }
   onProgress?.('estimating');
@@ -750,11 +549,6 @@ export async function parseMealWithResearch(
       : '',
   ].filter(Boolean).join(' ').trim() || undefined;
   const path = evidenceCount > 0 ? 'research' as const : 'fast' as const;
-
-  // Persist verified per-100g facts so the next identical food resolves instantly.
-  if (options?.cache) {
-    await persistCache(interpretation.items, resolved, options.cache);
-  }
 
   return attachTimings({
     items,
