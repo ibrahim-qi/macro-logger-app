@@ -364,8 +364,12 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
 
     if (verified.has(itemId)) {
       // Tap a confirmed item again to expand serving/quantity correction.
+      const targetItem = items.find((item) => item.id === itemId);
       setToolsExpandedId((current) => (current === itemId ? null : itemId));
       setServingEditId((current) => (current === itemId ? null : current));
+      // Reset the gram input to this item's own reference amount, so a value
+      // entered for a previous item can't leak into this one.
+      if (targetItem) setCustomGrams(String(extractReferenceAmount(targetItem)?.value ?? ''));
       setOpenMenuId(null);
       return;
     }
@@ -424,7 +428,14 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
         }));
 
       if (foodsToRemember.length > 0) {
-        await upsertSavedFoods(session.user.id, foodsToRemember);
+        // Remembering is best-effort: a failure here must not surface an error
+        // after food_entries are already persisted (which would invite a
+        // duplicate-log retry).
+        try {
+          await upsertSavedFoods(session.user.id, foodsToRemember);
+        } catch (rememberError) {
+          console.warn('Failed to remember saved foods', rememberError);
+        }
       }
 
       hapticSuccess();

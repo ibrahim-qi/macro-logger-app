@@ -221,7 +221,12 @@ async function consumeParseStream(
     throw streamError;
   }
 
-  if (!parsedMeal || parsedMeal.items.length === 0) {
+  if (!parsedMeal) {
+    // Stream ended without a result — treat as a truncated/timeout parse, not
+    // a genuine empty meal, so the UI shows "took too long" rather than "no food".
+    throw new Error('The meal parser took too long and did not finish. Try again.');
+  }
+  if (parsedMeal.items.length === 0) {
     throw new Error('No food items were found in that description.');
   }
 
@@ -304,13 +309,10 @@ export async function invokeParseMeal(
   },
 ): Promise<ParseMealResponse> {
   if (body.text?.trim()) {
-    try {
-      return await invokeParseMealStream({ text: body.text.trim() }, callbacks);
-    } catch (err) {
-      if (isParseRejectionError(err)) throw err;
-      if (err instanceof DOMException && err.name === 'AbortError') throw err;
-      return invokeParseMealPlain({ text: body.text.trim() });
-    }
+    // Surface the stream error directly. Re-running the whole parse here on a
+    // timeout doubled the wait and masked the real failure with a misleading
+    // "no food items" message.
+    return await invokeParseMealStream({ text: body.text.trim() }, callbacks);
   }
 
   const payload: Record<string, unknown> = { action: 'parse' };

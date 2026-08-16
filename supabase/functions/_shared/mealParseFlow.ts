@@ -267,13 +267,14 @@ async function selfCheckInterpretation(
       'meal_interpretation_refined',
       MEAL_INTERPRETATION_SCHEMA as unknown as Record<string, unknown>,
       INTERPRETATION_MAX_TOKENS,
-      'high',
+      'medium',
     );
     const corrected = normalizeInterpretation(raw);
     // Preserve the validated input assessment; the self-check only refines items.
     corrected.input_assessment = interpretation.input_assessment;
-    // Guard: never lose items the first pass correctly found.
-    if (!corrected.items.length && interpretation.items.length) return interpretation;
+    // Guard: never lose items the first pass correctly found. If the self-check
+    // returns fewer items (partial drop or merge), keep the first pass.
+    if (corrected.items.length < interpretation.items.length) return interpretation;
     return corrected;
   } catch (error) {
     console.warn('[parse] interpretation self-check failed; keeping first pass', error);
@@ -396,6 +397,12 @@ async function proposeRelatedFoods(
     console.warn('[parse] related-food proposal failed', error);
   }
   return replacements;
+}
+
+/** Strip brand tokens from a food name so a prepared/branded item can be
+ *  generalized deterministically when the related-food model proposes nothing. */
+function stripBrand(foodName: string): string {
+  return foodName.replace(UK_BRAND_NAME_PATTERN, ' ').replace(/\s+/g, ' ').trim();
 }
 
 /** Tag a resolution that came from a generalized (related) food rather than the
@@ -590,18 +597,24 @@ export async function parseMealWithResearch(
   const stillUnresolved = researchItems.filter((item) => !resolved.has(item.item_id));
   if (stillUnresolved.length && searchApiKey) {
     const related = await proposeRelatedFoods(config, mealText, stillUnresolved);
-    const generalized = stillUnresolved
-      .filter((item) => related.has(item.item_id))
-      .map((item) => {
-        const replacement = related.get(item.item_id)!;
-        return {
-          ...item,
-          food_name: replacement.food_name,
-          // Empty search_query forces the deterministic nutrition query
-          // (fallbackQuery) so we always search for per-100g macro evidence.
-          search_query: '',
-        };
+    const generalized: InterpretedMealItem[] = [];
+    for (const item of stillUnresolved) {
+      const replacement = related.get(item.item_id);
+      const name = (replacement?.food_name || stripBrand(item.food_name)).trim();
+      if (!name) continue;
+      generalized.push({
+        ...item,
+        food_name: name,
+        // General nutrition query — prepared foods rarely publish per-100g, so
+        // ask broadly and let the extractor pick per-serving/per-100g.
+        search_query: `${name} calories protein carbs fat`,
       });
+    }
+    console.log('[parse] related-food fallback', {
+      unresolved: stillUnresolved.map((i) => i.food_name),
+      proposed: Array.from(related.values()).map((r) => r.food_name),
+      generalized: generalized.map((i) => i.food_name),
+    });
     if (generalized.length) {
       const fallbackResearch = await searchMealItems(generalized, searchApiKey, {
         maxItems: options?.maxSearches,
