@@ -6,12 +6,15 @@ import { MEAL_HINT } from './transcriptValidation.ts';
 import {
   buildEvidenceUserMessage,
   buildInterpretationSystemPrompt,
+  buildRelatedFoodUserMessage,
   buildSelfCheckUserMessage,
   EVIDENCE_EXTRACTION_SYSTEM_PROMPT,
   INTERPRETATION_SELF_CHECK_SYSTEM_PROMPT,
   MEAL_INTERPRETATION_SCHEMA,
   NUTRITION_EVIDENCE_SCHEMA,
   PARSE_TEMPERATURE,
+  RELATED_FOOD_SCHEMA,
+  RELATED_FOOD_SYSTEM_PROMPT,
   type InterpretedMealItem,
   type MealInterpretation,
   type NutritionEvidenceFact,
@@ -364,6 +367,55 @@ async function extractEvidenceBatches(
   return resolved;
 }
 
+async function proposeRelatedFoods(
+  config: NanoGptConfig,
+  mealText: string,
+  items: InterpretedMealItem[],
+): Promise<Map<string, { food_name: string; search_query: string }>> {
+  const replacements = new Map<string, { food_name: string; search_query: string }>();
+  try {
+    const raw = await callNanoGptJson<{
+      replacements: Array<{ item_id: string; food_name: string; search_query: string }>;
+    }>(
+      config,
+      config.extractionModel ?? config.model,
+      RELATED_FOOD_SYSTEM_PROMPT,
+      buildRelatedFoodUserMessage(mealText, items),
+      'related_food',
+      RELATED_FOOD_SCHEMA as unknown as Record<string, unknown>,
+      EXTRACTION_MAX_TOKENS,
+    );
+    for (const replacement of raw.replacements ?? []) {
+      const itemId = String(replacement.item_id ?? '').trim();
+      const foodName = String(replacement.food_name ?? '').trim();
+      const searchQuery = String(replacement.search_query ?? '').trim();
+      if (itemId && foodName && searchQuery) {
+        replacements.set(itemId, { food_name: foodName, search_query: searchQuery });
+      }
+    }
+  } catch (error) {
+    console.warn('[parse] related-food proposal failed', error);
+  }
+  return replacements;
+}
+
+/** Tag a resolution that came from a generalized (related) food rather than the
+ *  exact item, so the review sheet can show it is a closest match — still
+ *  source-verified, never an estimate. */
+function markAsRelated(
+  value: ResolvedNutrition,
+  genericFoodName: string,
+): ResolvedNutrition {
+  return {
+    ...value,
+    fact: {
+      ...value.fact,
+      confidence: value.fact.confidence === 'high' ? 'medium' : value.fact.confidence,
+    },
+    source_note: `Closest verified match: ${genericFoodName}`,
+  };
+}
+
 function savedFoodItem(
   item: InterpretedMealItem,
   saved: SavedFoodMacros,
@@ -529,6 +581,54 @@ export async function parseMealWithResearch(
         resolved.set(itemId, value);
       }
       extractionMs = Math.round(nowMs() - extractionStartedAt);
+    }
+  }
+
+  // Related-food fallback — never leave an item "unavailable". If the exact
+  // food couldn't be verified, generalize it and verify the closest match
+  // against Google so every item still resolves to a real source.
+  const stillUnresolved = researchItems.filter((item) => !resolved.has(item.item_id));
+  if (stillUnresolved.length && searchApiKey) {
+    const related = await proposeRelatedFoods(config, mealText, stillUnresolved);
+    const generalized = stillUnresolved
+      .filter((item) => related.has(item.item_id))
+      .map((item) => {
+        const replacement = related.get(item.item_id)!;
+        return {
+          ...item,
+          food_name: replacement.food_name,
+          // Empty search_query forces the deterministic nutrition query
+          // (fallbackQuery) so we always search for per-100g macro evidence.
+          search_query: '',
+        };
+      });
+    if (generalized.length) {
+      const fallbackResearch = await searchMealItems(generalized, searchApiKey, {
+        maxItems: options?.maxSearches,
+        relaxed: true,
+      });
+
+      for (const [itemId, value] of evidenceResolutions(
+        extractDirectEvidenceFacts(fallbackResearch),
+        generalized,
+        fallbackResearch,
+      )) {
+        const generic = generalized.find((item) => item.item_id === itemId);
+        resolved.set(itemId, markAsRelated(value, generic?.food_name ?? ''));
+      }
+
+      const stillGeneralized = generalized.filter((item) => !resolved.has(item.item_id));
+      if (stillGeneralized.length) {
+        for (const [itemId, value] of (await extractEvidenceBatches(
+          config,
+          mealText,
+          stillGeneralized,
+          fallbackResearch,
+        )).entries()) {
+          const generic = generalized.find((item) => item.item_id === itemId);
+          resolved.set(itemId, markAsRelated(value, generic?.food_name ?? ''));
+        }
+      }
     }
   }
   onProgress?.('estimating');

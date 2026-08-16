@@ -30,6 +30,9 @@ export interface ItemSearchResult extends SearchResult {
 export interface MealSearchOptions {
   maxItems?: number;
   concurrency?: number;
+  /** Allow any source (drop UK/blocked-source filters) — used by the
+   *  related-food fallback where "closest match, any source" is the goal. */
+  relaxed?: boolean;
 }
 
 const SERPER_URL = 'https://google.serper.dev/search';
@@ -117,19 +120,21 @@ function asSnippet(row: unknown): SearchSnippet | null {
 }
 
 /** Pure filtering/ranking surface used by fixture tests. */
-export function filterAndRankSnippets(snippets: SearchSnippet[]): SearchSnippet[] {
+export function filterAndRankSnippets(snippets: SearchSnippet[], relaxed = false): SearchSnippet[] {
   return snippets
-    .filter(
-      (hit) =>
-        hit.snippet &&
+    .filter((hit) => {
+      if (!hit.snippet) return false;
+      if (relaxed) return true;
+      return (
         !BLOCKED_SOURCE_PATTERN.test(hit.link) &&
         !BLOCKED_SOURCE_PATTERN.test(hit.snippet) &&
-        UK_SUITABLE_LINK_PATTERN.test(hit.link),
-    )
+        UK_SUITABLE_LINK_PATTERN.test(hit.link)
+      );
+    })
     .map((hit, index) => ({
       hit,
       index,
-      preferred: UK_PREFERRED_LINK_PATTERN.test(hit.link),
+      preferred: relaxed ? false : UK_PREFERRED_LINK_PATTERN.test(hit.link),
     }))
     .sort((a, b) => Number(b.preferred) - Number(a.preferred) || a.index - b.index)
     .map(({ hit }) => hit)
@@ -140,9 +145,10 @@ function retryableStatus(status: number): boolean {
   return status === 429 || status >= 500;
 }
 
-export async function searchWeb(query: string, apiKey: string): Promise<SearchResult> {
+export async function searchWeb(query: string, apiKey: string, relaxed = false): Promise<SearchResult> {
   const biasedQuery = ukBiasQuery(query);
-  const cached = getCachedSearch(biasedQuery);
+  const cacheKey = relaxed ? `${biasedQuery}::relaxed` : biasedQuery;
+  const cached = getCachedSearch(cacheKey);
   if (cached) return cached;
 
   const timeoutMs = runtimeNumber('SERPER_TIMEOUT_MS', DEFAULT_TIMEOUT_MS);
@@ -186,8 +192,8 @@ export async function searchWeb(query: string, apiKey: string): Promise<SearchRe
         if (snippet) raw.push(snippet);
       }
 
-      const result = { query: biasedQuery, snippets: filterAndRankSnippets(raw) };
-      setCachedSearch(biasedQuery, result);
+      const result = { query: biasedQuery, snippets: filterAndRankSnippets(raw, relaxed) };
+      setCachedSearch(cacheKey, result);
       return result;
     } catch (error) {
       lastError = error;
@@ -216,10 +222,10 @@ function queryForItem(item: ItemSearchRequest): string {
   return ukBiasQuery(modelQuery || fallbackQuery(item));
 }
 
-async function searchOne(item: ItemSearchRequest, apiKey: string): Promise<ItemSearchResult> {
+async function searchOne(item: ItemSearchRequest, apiKey: string, relaxed = false): Promise<ItemSearchResult> {
   const query = queryForItem(item);
   try {
-    const result = await searchWeb(query, apiKey);
+    const result = await searchWeb(query, apiKey, relaxed);
     return {
       ...result,
       item_id: item.item_id,
@@ -263,7 +269,7 @@ export async function searchMealItems(
     while (true) {
       const index = nextIndex++;
       if (index >= searchable.length) return;
-      results[index] = await searchOne(searchable[index], apiKey);
+      results[index] = await searchOne(searchable[index], apiKey, options.relaxed);
     }
   };
   await Promise.all(
