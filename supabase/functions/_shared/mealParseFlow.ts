@@ -32,7 +32,7 @@ import {
   type ItemSearchResult,
 } from './webSearch.ts';
 import { normalizeItems, type ParsedFoodItem } from './normalizeItems.ts';
-import { lookupNutritionDb } from './fatSecret.ts';
+import { lookupNutritionDb } from './nutritionDb.ts';
 
 export interface ParseMealFlowResult {
   items: ParsedFoodItem[];
@@ -59,8 +59,6 @@ export interface NanoGptConfig {
   interpretationModel?: string;
   extractionModel?: string;
   fallbackModel?: string;
-  fatSecretClientId?: string;
-  fatSecretClientSecret?: string;
 }
 
 export type ParseProgressStage = 'identifying' | 'looking_up' | 'estimating';
@@ -329,16 +327,16 @@ function evidenceResolutions(
 
 async function resolveFromNutritionDb(
   items: InterpretedMealItem[],
-  fatSecret: { clientId: string; clientSecret: string } | undefined,
+  bestEffort = false,
 ): Promise<Map<string, ResolvedNutrition>> {
   const resolved = new Map<string, ResolvedNutrition>();
-  if (!fatSecret) return resolved;
   // Solids only — drinks (volume, no weight) keep the per_100ml Serper path.
   const resolvable = items.filter((item) => item.reference_weight_g != null);
-  for (const batch of chunkArray(resolvable, 4)) {
+  // OFF rate-limits aggressively — process in small batches (3 concurrent max).
+  for (const batch of chunkArray(resolvable, 3)) {
     await Promise.all(
       batch.map(async (item) => {
-        const hit = await lookupNutritionDb(item.food_name, fatSecret);
+        const hit = await lookupNutritionDb(item.food_name, bestEffort);
         if (!hit) return;
         const fact: NutritionEvidenceFact = {
           item_id: item.item_id,
@@ -350,8 +348,8 @@ async function resolveFromNutritionDb(
           fats: hit.fats,
           serving_weight_g: null,
           serving_volume_ml: null,
-          confidence: 'high',
-          source_title: 'FatSecret',
+          confidence: bestEffort ? 'low' : 'high',
+          source_title: 'Open Food Facts',
           source_url: hit.source_url,
           evidence_quote: hit.food_name,
         };
@@ -362,7 +360,7 @@ async function resolveFromNutritionDb(
           fact,
           evidence_status: 'uk_evidence',
           source_note: hit.food_name,
-          source_title: 'FatSecret',
+          source_title: 'Open Food Facts',
           source_url: hit.source_url,
           evidence_quote: hit.food_name,
         });
@@ -589,16 +587,13 @@ export async function parseMealWithResearch(
 
   if (researchItems.length) {
     onProgress?.('looking_up');
-    // 1. FatSecret structured lookup first — authoritative UK per-100g data with
-    //    no LLM extraction. Anything FatSecret misses falls through to Serper.
-    const fatSecret = config.fatSecretClientId && config.fatSecretClientSecret
-      ? { clientId: config.fatSecretClientId, clientSecret: config.fatSecretClientSecret }
-      : undefined;
-    for (const [itemId, value] of (await resolveFromNutritionDb(researchItems, fatSecret)).entries()) {
+    // 1. Nutrition database first — authoritative + fast for generic/unlabelled
+    //    foods (no LLM extraction). Branded products OFF lacks fall through.
+    for (const [itemId, value] of (await resolveFromNutritionDb(researchItems)).entries()) {
       resolved.set(itemId, value);
     }
 
-    // 2. Web search (Serper) only for what FatSecret couldn't resolve.
+    // 2. Web search (Serper) only for what the database couldn't resolve.
     const searchItems = researchItems.filter((item) => !resolved.has(item.item_id));
     if (searchItems.length && searchApiKey) {
       const searchStartedAt = nowMs();
@@ -637,6 +632,13 @@ export async function parseMealWithResearch(
         extractionMs = Math.round(nowMs() - extractionStartedAt);
       }
     }
+  }
+
+  // Best-effort source fallback — no item is left "unavailable" without trying
+  // the closest Open Food Facts match (low confidence, still a real source).
+  const unresolvedItems = researchItems.filter((item) => !resolved.has(item.item_id));
+  for (const [itemId, value] of (await resolveFromNutritionDb(unresolvedItems, true)).entries()) {
+    resolved.set(itemId, value);
   }
 
   // Final relaxed fallback — extract low-confidence facts from any Serper
