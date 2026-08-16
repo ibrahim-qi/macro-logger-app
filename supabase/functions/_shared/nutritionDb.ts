@@ -117,39 +117,53 @@ export async function lookupNutritionDb(
   const cached = getCached(key);
   if (cached !== undefined) return cached;
 
-  try {
-    const url =
-      `${OFF_BASE}/cgi/search.pl?search_terms=${encodeURIComponent(foodName)}` +
-      `&json=1&page_size=${OFF_PAGE_SIZE}&fields=product_name,code,brands,generic_name,nutriments`;
-    const response = await fetch(url, {
-      headers: { 'User-Agent': 'Soha macro logger / 1.0' },
-      signal: AbortSignal.timeout(OFF_TIMEOUT_MS),
-    });
-    if (!response.ok) throw new Error(`OFF ${response.status}`);
+  // OFF rate-limits aggressively; retry across hosts with a short backoff.
+  const hosts = ['https://uk.openfoodfacts.org', 'https://world.openfoodfacts.org'];
+  for (let attempt = 0; attempt < 2; attempt++) {
+    for (const host of hosts) {
+      try {
+        const url =
+          `${host}/cgi/search.pl?search_terms=${encodeURIComponent(foodName)}` +
+          `&json=1&page_size=${OFF_PAGE_SIZE}&fields=product_name,code,brands,generic_name,nutriments`;
+        const response = await fetch(url, {
+          headers: { 'User-Agent': 'Soha macro logger / 1.0' },
+          signal: AbortSignal.timeout(OFF_TIMEOUT_MS),
+        });
+        if (response.status === 429) continue; // rate-limited — try next host
+        if (!response.ok) throw new Error(`OFF ${response.status}`);
 
-    const payload = await response.json();
-    const products: OffProduct[] = Array.isArray(payload?.products) ? payload.products : [];
+        const text = await response.text();
+        let payload: { products?: OffProduct[] };
+        try {
+          payload = JSON.parse(text);
+        } catch {
+          continue; // non-JSON (HTML block/rate-limit page) — try next host
+        }
 
-    // Strict mode requires a close name match; best-effort takes the top result.
-    const candidates = bestEffort
-      ? products
-      : products.filter((product) => closeNameMatch(foodName, String(product.product_name ?? '')));
-    if (!candidates.length) {
-      setCached(key, null);
-      return null;
+        const products = Array.isArray(payload?.products) ? payload.products : [];
+        const candidates = bestEffort
+          ? products
+          : products.filter((product) => closeNameMatch(foodName, String(product.product_name ?? '')));
+        if (!candidates.length) {
+          setCached(key, null);
+          return null;
+        }
+        candidates.sort((a, b) => {
+          const aGeneric = !a.brands && Boolean(a.generic_name) ? 0 : 1;
+          const bGeneric = !b.brands && Boolean(b.generic_name) ? 0 : 1;
+          return aGeneric - bGeneric;
+        });
+
+        const hit = toHit(foodName, candidates[0]);
+        setCached(key, hit);
+        return hit;
+      } catch {
+        // transient — try next host
+      }
     }
-    candidates.sort((a, b) => {
-      const aGeneric = !a.brands && Boolean(a.generic_name) ? 0 : 1;
-      const bGeneric = !b.brands && Boolean(b.generic_name) ? 0 : 1;
-      return aGeneric - bGeneric;
-    });
-
-    const hit = toHit(foodName, candidates[0]);
-    setCached(key, hit);
-    return hit;
-  } catch (error) {
-    console.warn('[nutrition-db] lookup failed', { foodName, error: String(error) });
-    setCached(key, null);
-    return null;
+    await new Promise((resolve) => setTimeout(resolve, 800));
   }
+
+  setCached(key, null);
+  return null;
 }

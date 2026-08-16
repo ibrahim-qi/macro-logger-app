@@ -410,6 +410,58 @@ async function extractEvidenceBatches(
   return resolved;
 }
 
+async function relaxedEvidenceFallback(
+  config: NanoGptConfig,
+  mealText: string,
+  items: InterpretedMealItem[],
+  research: ItemSearchResult[],
+): Promise<Map<string, ResolvedNutrition>> {
+  const resolved = new Map<string, ResolvedNutrition>();
+  const researchById = new Map(research.map((result) => [result.item_id, result]));
+  const withSnippets = items.filter((item) => {
+    const result = researchById.get(item.item_id);
+    return Boolean(result && result.snippets.length);
+  });
+  if (!withSnippets.length) return resolved;
+
+  try {
+    const extracted = await callNanoGptJson<{ facts: NutritionEvidenceFact[] }>(
+      config,
+      config.extractionModel ?? config.model,
+      EVIDENCE_EXTRACTION_SYSTEM_PROMPT,
+      buildEvidenceUserMessage(
+        mealText,
+        withSnippets,
+        formatItemResearchForPrompt(
+          withSnippets.map((item) => researchById.get(item.item_id) as ItemSearchResult),
+        ),
+      ),
+      'nutrition_evidence_relaxed',
+      NUTRITION_EVIDENCE_SCHEMA as unknown as Record<string, unknown>,
+      EXTRACTION_MAX_TOKENS,
+    );
+    for (const fact of extracted.facts ?? []) {
+      if (resolved.has(fact.item_id)) continue;
+      const item = withSnippets.find((candidate) => candidate.item_id === fact.item_id);
+      if (!item) continue;
+      const values = computeNutrition(item, fact);
+      if (!values) continue;
+      resolved.set(fact.item_id, {
+        values,
+        fact: { ...fact, confidence: 'low' },
+        evidence_status: 'uk_evidence',
+        source_note: fact.source_title,
+        source_title: fact.source_title,
+        source_url: fact.source_url,
+        evidence_quote: fact.evidence_quote,
+      });
+    }
+  } catch (error) {
+    console.warn('[parse] relaxed evidence fallback failed', error);
+  }
+  return resolved;
+}
+
 function savedFoodItem(
   item: InterpretedMealItem,
   saved: SavedFoodMacros,
@@ -587,6 +639,21 @@ export async function parseMealWithResearch(
   const unresolvedItems = researchItems.filter((item) => !resolved.has(item.item_id));
   for (const [itemId, value] of (await resolveFromNutritionDb(unresolvedItems, true)).entries()) {
     resolved.set(itemId, value);
+  }
+
+  // Final relaxed fallback — extract low-confidence facts from any Serper
+  // snippet we already fetched, citing it as the source. An item is only ever
+  // "unavailable" when there is genuinely no source anywhere.
+  const stillUnresolved = researchItems.filter((item) => !resolved.has(item.item_id));
+  if (stillUnresolved.length && research.length) {
+    for (const [itemId, value] of (await relaxedEvidenceFallback(
+      config,
+      mealText,
+      stillUnresolved,
+      research,
+    )).entries()) {
+      resolved.set(itemId, value);
+    }
   }
   onProgress?.('estimating');
 
