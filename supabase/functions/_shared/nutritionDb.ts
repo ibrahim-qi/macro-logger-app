@@ -48,13 +48,18 @@ function positiveOrNull(value: unknown): number | null {
   return Number.isFinite(number) && number > 0 ? number : null;
 }
 
+/** Connector/function words that carry no food-identity signal for name matching. */
+const STOP_WORDS = new Set([
+  'and', 'or', 'with', 'of', 'the', 'a', 'an', 'in', 'on', 'at', 'to', 'for',
+]);
+
 function tokenize(value: string): string[] {
   return value
     .toLowerCase()
     .replace(/[^a-z0-9 ]/g, ' ')
     .trim()
     .split(/\s+/)
-    .filter(Boolean);
+    .filter((token) => Boolean(token) && !STOP_WORDS.has(token));
 }
 
 /** Common descriptors that may legitimately appear in a generic food's name. */
