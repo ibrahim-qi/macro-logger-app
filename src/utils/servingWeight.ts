@@ -29,9 +29,9 @@ export function scaleItemByReferenceAmount(
     reference_weight_g: base.unit === 'g' ? newAmount : undefined,
     reference_volume_ml: base.unit === 'ml' ? newAmount : undefined,
     calories: Math.max(0, Math.round(item.calories * ratio)),
-    protein: Math.max(0, Math.round(item.protein * ratio * 10) / 10),
-    carbs: Math.max(0, Math.round(item.carbs * ratio * 10) / 10),
-    fats: Math.max(0, Math.round(item.fats * ratio * 10) / 10),
+    protein: item.protein != null ? Math.max(0, Math.round(item.protein * ratio * 10) / 10) : null,
+    carbs: item.carbs != null ? Math.max(0, Math.round(item.carbs * ratio * 10) / 10) : null,
+    fats: item.fats != null ? Math.max(0, Math.round(item.fats * ratio * 10) / 10) : null,
     portion_assumption: formatPortionAssumptionWithAmount(
       item.portion_assumption,
       newAmount,

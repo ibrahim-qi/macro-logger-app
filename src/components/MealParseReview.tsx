@@ -69,13 +69,11 @@ function shouldAutoVerify(item: ParsedFoodItem): boolean {
     || item.evidence_status === 'user_saved';
 }
 
-function userAdjustedProvenance(): Pick<ParsedFoodItem, 'from_saved_food' | 'evidence_status' | 'source_note' | 'source_title' | 'source_url'> {
+function userAdjustedProvenance(): Pick<ParsedFoodItem, 'from_saved_food' | 'evidence_status' | 'source_note'> {
   return {
     from_saved_food: false,
     evidence_status: 'ai_estimate',
     source_note: 'Adjusted by user',
-    source_title: 'Adjusted by user',
-    source_url: undefined,
   };
 }
 
@@ -90,6 +88,7 @@ function provenanceWhisper(item: ParsedFoodItem): string {
   switch (item.evidence_status) {
     case 'uk_evidence': return 'UK-verified';
     case 'related_match': return item.source_note || 'closest match';
+    case 'ai_estimate': return 'adjusted by you';
     case 'unavailable': return 'couldn\'t verify';
     default: return 'estimated';
   }
@@ -802,9 +801,9 @@ const MealParseReview: React.FC<MealParseReviewProps> = ({
                               <span className="meal-review-row__source meal-review-row__whisper">{whisper}</span>
                             )}
                             <MacroLine
-                              protein={item.protein * qty}
-                              carbs={item.carbs * qty}
-                              fats={item.fats * qty}
+                              protein={item.protein != null ? item.protein * qty : null}
+                              carbs={item.carbs != null ? item.carbs * qty : null}
+                              fats={item.fats != null ? item.fats * qty : null}
                             />
                           </div>
                         )}
