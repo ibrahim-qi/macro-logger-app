@@ -284,7 +284,7 @@ async function selfCheckInterpretation(
 interface ResolvedNutrition {
   values: ComputedNutrition;
   fact: NutritionFactBase;
-  evidence_status: 'uk_evidence';
+  evidence_status: 'uk_evidence' | 'user_saved' | 'unavailable';
   source_note: string;
   source_title?: string;
   source_url?: string;
@@ -376,6 +376,9 @@ async function persistCache(
   for (const item of items) {
     const r = resolved.get(item.item_id);
     if (!r || r.fact.basis !== 'per_100g' || r.fact.calories == null) continue;
+    // Never overwrite a user correction with a machine lookup — the user's value
+    // is ground truth and must win future lookups.
+    if (r.evidence_status === 'user_saved') continue;
     await cache.set(item.food_name, {
       calories_100g: r.fact.calories,
       protein_100g: r.fact.protein,
